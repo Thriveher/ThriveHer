@@ -1,0 +1,57 @@
+// data/data.ts
+import { PostType } from '../types/types';
+
+export const posts: PostType[] = [
+  {
+    id: '1',
+    userName: 'Sarah Johnson',
+    userTitle: 'Product Manager at TechCorp',
+    userProfilePic: 'https://randomuser.me/api/portraits/women/44.jpg',
+    timePosted: '2h ago',
+    text: 'Excited to announce that our team has just launched the new version of our app! Check it out in the App Store and Google Play. #ProductLaunch #MobileApp',
+    image: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80',
+    likes: 127,
+    comments: 23,
+  },
+  {
+    id: '2',
+    userName: 'Michael Chen',
+    userTitle: 'Software Engineer | React Native Developer',
+    userProfilePic: 'https://randomuser.me/api/portraits/men/32.jpg',
+    timePosted: '4h ago',
+    text: 'Just published my new tutorial on building performant React Native apps. Link in comments!',
+    likes: 84,
+    comments: 17,
+  },
+  {
+    id: '3',
+    userName: 'Taylor Wilson',
+    userTitle: 'UX Designer at DesignHub',
+    timePosted: '1d ago',
+    text: 'Design thinking workshop with the team today was incredibly productive. Here are some highlights from our ideation session:',
+    image: 'https://images.unsplash.com/photo-1542744173-8e7e53415bb0?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80',
+    likes: 215,
+    comments: 42,
+  },
+  {
+    id: '4',
+    userName: 'Priya Patel',
+    userTitle: 'Marketing Specialist | Content Creator',
+    userProfilePic: 'https://randomuser.me/api/portraits/women/68.jpg',
+    timePosted: '2d ago',
+    text: 'Just finished reading "Building a StoryBrand" by Donald Miller. Highly recommend for anyone working in marketing! What business books have inspired you lately?',
+    likes: 76,
+    comments: 31,
+  },
+  {
+    id: '5',
+    userName: 'James Rodriguez',
+    userTitle: 'Frontend Developer at WebSolutions',
+    userProfilePic: 'https://randomuser.me/api/portraits/men/67.jpg',
+    timePosted: '3d ago',
+    text: 'After 3 years at WebSolutions, I\'m excited to share that I\'m starting a new position as Senior Frontend Developer at TechInnovate! Looking forward to this new chapter. #CareerMove #WebDevelopment',
+    image: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80',
+    likes: 342,
+    comments: 89,
+  },
+];
