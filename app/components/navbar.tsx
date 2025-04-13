@@ -1,29 +1,48 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useRouter, usePathname } from 'expo-router';
+
+type RoutePath = '/home' | '/explore' | '/chat' | '/profile';
 
 const Navbar = () => {
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const navItems: { label: string; icon: any; path: RoutePath }[] = [
+    { label: 'Home', icon: 'home', path: '/home' },
+    { label: 'Search', icon: 'search', path: '/explore' },
+    { label: 'Chat', icon: 'message-square', path: '/chat' },
+    { label: 'Profile', icon: 'user', path: '/profile' },
+  ];
+
   return (
     <View style={styles.navbar}>
-      <TouchableOpacity style={styles.navItem}>
-        <Feather name="home" size={24} color="#253528" />
-        <Text style={styles.navText}>Home</Text>
-      </TouchableOpacity>
-      
-      <TouchableOpacity style={styles.navItem}>
-        <Feather name="search" size={24} color="#49654E" />
-        <Text style={[styles.navText, styles.navTextInactive]}>Search</Text>
-      </TouchableOpacity>
-      
-      <TouchableOpacity style={styles.navItem}>
-        <Feather name="message-square" size={24} color="#49654E" />
-        <Text style={[styles.navText, styles.navTextInactive]}>Chat</Text>
-      </TouchableOpacity>
-      
-      <TouchableOpacity style={styles.navItem}>
-        <Feather name="user" size={24} color="#49654E" />
-        <Text style={[styles.navText, styles.navTextInactive]}>Profile</Text>
-      </TouchableOpacity>
+      {navItems.map(({ label, icon, path }) => {
+        const isActive = pathname === path;
+
+        return (
+          <TouchableOpacity
+            key={label}
+            style={styles.navItem}
+            onPress={() => router.push(path)}
+          >
+            <Feather
+              name={icon}
+              size={24}
+              color={isActive ? '#253528' : '#49654E'}
+            />
+            <Text
+              style={[
+                styles.navText,
+                !isActive && styles.navTextInactive
+              ]}
+            >
+              {label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 };
@@ -50,7 +69,7 @@ const styles = StyleSheet.create({
   navTextInactive: {
     color: '#49654E',
     fontWeight: 'normal',
-  }
+  },
 });
 
 export default Navbar;

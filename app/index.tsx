@@ -21,7 +21,7 @@ export default function WelcomePage() {
         <SafeAreaView style={styles.contentContainer}>
           <View style={styles.imageContainer}>
             <Image
-              source={require('../assets/images/react-logo.png')} // Replace with your artwork path
+              source={require('../assets/images/welcome-page.png')} // Replace with your artwork path
               style={styles.welcomeImage}
               resizeMode="contain"
             />

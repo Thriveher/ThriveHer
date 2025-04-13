@@ -2,7 +2,7 @@ import React from 'react';
 import { SafeAreaView, ScrollView, View, Text, StyleSheet, StatusBar, TouchableOpacity } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import Posts from '../components/posts';
-import { posts } from '../data/data';
+import { posts } from '../data/post';
 import Navbar from '../components/navbar';
 
 const Home = () => {
