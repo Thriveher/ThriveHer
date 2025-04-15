@@ -11,11 +11,11 @@ import {
   Image,
   StyleSheet,
   SafeAreaView,
-  StatusBar,
-  Platform
+  StatusBar
 } from 'react-native';
 import { searchJobs, JobSearchParams } from '../api/getjobs';
 import { Ionicons } from '@expo/vector-icons';
+import BottomNavbar from '../components/navbar'; // Import the navbar component
 
 // Common job search keywords for suggestions
 const JOB_SUGGESTIONS = [
@@ -78,8 +78,8 @@ const JobCard = ({ job }: { job: any }) => {
         )}
       </View>
       
-      <TouchableOpacity style={styles.applyButton}>
-        <Text style={styles.applyButtonText}>View Details</Text>
+      <TouchableOpacity style={styles.viewButton}>
+        <Text style={styles.viewButtonText}>View Details</Text>
       </TouchableOpacity>
     </TouchableOpacity>
   );
@@ -147,7 +147,7 @@ const JobSearchScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar backgroundColor="#8BA889" barStyle="dark-content" />
+      <StatusBar backgroundColor="#E8F5E9" barStyle="dark-content" />
       
       {/* Header */}
       <View style={styles.header}>
@@ -157,7 +157,7 @@ const JobSearchScreen = () => {
       {/* Search Bar */}
       <View style={styles.searchContainer}>
         <View style={styles.searchInputContainer}>
-          <Ionicons name="search" size={22} color="#49654E" style={styles.searchIcon} />
+          <Ionicons name="search" size={20} color="#49654E" style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
             placeholder="Search for jobs..."
@@ -178,14 +178,10 @@ const JobSearchScreen = () => {
               }}
               style={styles.clearButton}
             >
-              <Ionicons name="close-circle" size={18} color="#49654E" />
+              <Ionicons name="close-circle" size={16} color="#49654E" />
             </TouchableOpacity>
           )}
         </View>
-        
-        <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
-          <Text style={styles.searchButtonText}>Search</Text>
-        </TouchableOpacity>
       </View>
       
       {/* Suggestions */}
@@ -197,7 +193,7 @@ const JobSearchScreen = () => {
               style={styles.suggestionItem}
               onPress={() => handleSelectSuggestion(suggestion)}
             >
-              <Ionicons name="search-outline" size={16} color="#49654E" />
+              <Ionicons name="search-outline" size={14} color="#49654E" />
               <Text style={styles.suggestionText}>{suggestion}</Text>
             </TouchableOpacity>
           ))}
@@ -207,7 +203,7 @@ const JobSearchScreen = () => {
       {/* Loading Indicator */}
       {isLoading && (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#253528" />
+          <ActivityIndicator size="small" color="#49654E" />
           <Text style={styles.loadingText}>Searching jobs...</Text>
         </View>
       )}
@@ -215,7 +211,7 @@ const JobSearchScreen = () => {
       {/* Error Message */}
       {error && !isLoading && (
         <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle-outline" size={32} color="#253528" />
+          <Ionicons name="alert-circle-outline" size={24} color="#49654E" />
           <Text style={styles.errorText}>{error}</Text>
         </View>
       )}
@@ -234,22 +230,21 @@ const JobSearchScreen = () => {
       {/* No Results */}
       {!isLoading && !error && jobResults.length === 0 && searchQuery.trim() !== '' && (
         <View style={styles.noResultsContainer}>
-          <Ionicons name="search-outline" size={64} color="#49654E" />
-          <Text style={styles.noResultsText}>No jobs found matching your search.</Text>
-          <Text style={styles.noResultsSubtext}>Try adjusting your search terms.</Text>
+          <Ionicons name="search-outline" size={40} color="#49654E" />
+          <Text style={styles.noResultsText}>No jobs found</Text>
+          <Text style={styles.noResultsSubtext}>Try different search terms</Text>
         </View>
       )}
       
       {/* Empty State */}
       {!isLoading && !error && jobResults.length === 0 && searchQuery.trim() === '' && (
         <View style={styles.emptyStateContainer}>
-          <Ionicons name="briefcase-outline" size={80} color="#49654E" />
+          <Ionicons name="briefcase-outline" size={60} color="#49654E" />
           <Text style={styles.emptyStateTitle}>Find Your Dream Job</Text>
           <Text style={styles.emptyStateText}>
-            Search for jobs using the search bar above.
+            Start by searching for a job position
           </Text>
           <View style={styles.quickSearchContainer}>
-            <Text style={styles.quickSearchTitle}>Quick Searches:</Text>
             <View style={styles.quickSearchButtonsRow}>
               {['Developer', 'Designer', 'Manager'].map((term, index) => (
                 <TouchableOpacity 
@@ -267,6 +262,9 @@ const JobSearchScreen = () => {
           </View>
         </View>
       )}
+      
+      {/* Bottom Navbar */}
+      <BottomNavbar />
     </SafeAreaView>
   );
 };
@@ -274,96 +272,75 @@ const JobSearchScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#8BA889',
+    backgroundColor: '#E8F5E9',
   },
   header: {
-    backgroundColor: '#253528',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    elevation: 4,
+    backgroundColor: '#49654E',
+    paddingVertical: 14,
+    elevation: 2,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
   },
   headerTitle: {
     color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '600',
     textAlign: 'center',
   },
   searchContainer: {
-    flexDirection: 'row',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    margin: 16,
-    alignItems: 'center',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 1.5,
+    backgroundColor: '#E8F5E9',
   },
   searchInputContainer: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F2F6F3',
-    borderRadius: 4,
-    paddingHorizontal: 10,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 48,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
   },
   searchIcon: {
     marginRight: 8,
   },
   searchInput: {
     flex: 1,
-    height: 40,
     color: '#253528',
-    fontSize: 16,
-    paddingVertical: 8,
+    fontSize: 15,
   },
   clearButton: {
     padding: 4,
   },
-  searchButton: {
-    backgroundColor: '#253528',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 4,
-    marginLeft: 12,
-    elevation: 1,
-  },
-  searchButtonText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
   suggestionsContainer: {
     backgroundColor: '#FFFFFF',
     marginHorizontal: 16,
-    marginTop: -12,
-    marginBottom: 16,
+    marginTop: -6,
     borderRadius: 8,
-    elevation: 4,
+    elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.1,
     shadowRadius: 2,
-    paddingVertical: 8,
+    overflow: 'hidden',
   },
   suggestionItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#F2F6F3',
+    borderBottomColor: '#F0F0F0',
   },
   suggestionText: {
     color: '#253528',
-    fontSize: 15,
+    fontSize: 14,
     marginLeft: 10,
   },
   loadingContainer: {
@@ -373,9 +350,8 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     color: '#253528',
-    fontSize: 16,
+    fontSize: 14,
     marginTop: 10,
-    fontWeight: '500',
   },
   errorContainer: {
     flex: 1,
@@ -385,36 +361,37 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: '#253528',
-    fontSize: 16,
+    fontSize: 14,
     textAlign: 'center',
-    marginTop: 12,
+    marginTop: 8,
   },
   jobList: {
     paddingHorizontal: 16,
-    paddingBottom: 20,
+    paddingVertical: 8,
+    paddingBottom: 80, // Add bottom padding for the navbar
   },
   jobCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    marginBottom: 16,
-    padding: 16,
-    elevation: 2,
+    borderRadius: 10,
+    marginBottom: 12,
+    padding: 14,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.15,
-    shadowRadius: 1,
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 1,
   },
   jobHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   companyLogo: {
-    width: 50,
-    height: 50,
-    borderRadius: 8,
-    backgroundColor: '#F2F6F3',
-    marginRight: 12,
+    width: 40,
+    height: 40,
+    borderRadius: 6,
+    backgroundColor: '#F5F5F5',
+    marginRight: 10,
   },
   placeholderLogo: {
     justifyContent: 'center',
@@ -423,111 +400,103 @@ const styles = StyleSheet.create({
   },
   placeholderText: {
     color: '#FFFFFF',
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: 'bold',
   },
   jobHeaderText: {
     flex: 1,
   },
   jobTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 15,
+    fontWeight: '600',
     color: '#253528',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   companyName: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#49654E',
   },
   jobDetails: {
-    marginBottom: 12,
+    marginBottom: 10,
   },
   jobDetailItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 5,
   },
   jobDetailText: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#49654E',
     marginLeft: 6,
   },
-  applyButton: {
-    backgroundColor: '#253528',
-    borderRadius: 4,
-    paddingVertical: 10,
+  viewButton: {
+    backgroundColor: '#49654E',
+    borderRadius: 6,
+    paddingVertical: 8,
     alignItems: 'center',
-    marginTop: 4,
   },
-  applyButtonText: {
+  viewButtonText: {
     color: '#FFFFFF',
-    fontWeight: 'bold',
-    fontSize: 14,
+    fontWeight: '500',
+    fontSize: 13,
   },
   noResultsContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 32,
+    padding: 20,
   },
   noResultsText: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 16,
+    fontWeight: '600',
     color: '#253528',
-    marginTop: 16,
+    marginTop: 12,
     textAlign: 'center',
   },
   noResultsSubtext: {
-    fontSize: 15,
+    fontSize: 14,
     color: '#49654E',
-    marginTop: 8,
+    marginTop: 6,
     textAlign: 'center',
   },
   emptyStateContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 32,
+    padding: 24,
   },
   emptyStateTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '600',
     color: '#253528',
-    marginTop: 16,
+    marginTop: 12,
     textAlign: 'center',
   },
   emptyStateText: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#49654E',
-    marginTop: 8,
+    marginTop: 6,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   quickSearchContainer: {
-    width: '100%',
     alignItems: 'center',
-  },
-  quickSearchTitle: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#253528',
-    marginBottom: 10,
+    marginTop: 6,
   },
   quickSearchButtonsRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    flexWrap: 'wrap',
   },
   quickSearchButton: {
     backgroundColor: '#49654E',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    margin: 6,
-    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    margin: 4,
+    borderRadius: 16,
   },
   quickSearchButtonText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '500',
   },
 });
