@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { searchJobs, JobSearchParams } from '../api/getjobs';
 import { Ionicons } from '@expo/vector-icons';
-import BottomNavbar from '../components/navbar'; // Import the navbar component
+import BottomNavbar from '../components/navbar';
 
 // Common job search keywords for suggestions
 const JOB_SUGGESTIONS = [
@@ -55,13 +55,13 @@ const JobCard = ({ job }: { job: any }) => {
       
       <View style={styles.jobDetails}>
         <View style={styles.jobDetailItem}>
-          <Ionicons name="briefcase-outline" size={14} color="#49654E" />
+          <Ionicons name="briefcase-outline" size={14} color="#5A7A61" />
           <Text style={styles.jobDetailText}>{job.job_employment_type || 'Not specified'}</Text>
         </View>
         
         {job.job_city && (
           <View style={styles.jobDetailItem}>
-            <Ionicons name="location-outline" size={14} color="#49654E" />
+            <Ionicons name="location-outline" size={14} color="#5A7A61" />
             <Text style={styles.jobDetailText}>
               {`${job.job_city}${job.job_state ? `, ${job.job_state}` : ''}`}
             </Text>
@@ -70,7 +70,7 @@ const JobCard = ({ job }: { job: any }) => {
         
         {job.job_posted_at_datetime_utc && (
           <View style={styles.jobDetailItem}>
-            <Ionicons name="time-outline" size={14} color="#49654E" />
+            <Ionicons name="time-outline" size={14} color="#5A7A61" />
             <Text style={styles.jobDetailText}>
               {new Date(job.job_posted_at_datetime_utc).toLocaleDateString()}
             </Text>
@@ -93,6 +93,7 @@ const JobSearchScreen = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [jobResults, setJobResults] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
 
   // Filter suggestions based on input
   useEffect(() => {
@@ -106,9 +107,30 @@ const JobSearchScreen = () => {
     }
   }, [searchQuery]);
 
+  // Auto search functionality
+  useEffect(() => {
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+    }
+    
+    if (searchQuery.trim().length > 2) {
+      const timeout = setTimeout(() => {
+        handleSearch();
+      }, 500);
+      
+      setSearchTimeout(timeout);
+    }
+    
+    return () => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+    };
+  }, [searchQuery]);
+
   // Handle search submission
   const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
+    if (!searchQuery.trim() || searchQuery.trim().length < 3) return;
     
     setIsLoading(true);
     setError(null);
@@ -127,47 +149,40 @@ const JobSearchScreen = () => {
       if (response.status === 'OK' && response.data) {
         setJobResults(response.data);
       } else {
-        setError('No results found. Please try a different search term.');
+        setError('No results found. Please try different keywords.');
         setJobResults([]);
       }
     } catch (err) {
-      setError('An error occurred while searching for jobs. Please try again.');
+      setError('An error occurred. Please try again.');
       setJobResults([]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Select suggestion and search
+  // Select suggestion
   const handleSelectSuggestion = (suggestion: string) => {
     setSearchQuery(suggestion);
     setShowSuggestions(false);
-    handleSearch();
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar backgroundColor="#E8F5E9" barStyle="dark-content" />
-      
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Job Search</Text>
-      </View>
+      <StatusBar backgroundColor="#F0F7F1" barStyle="dark-content" />
       
       {/* Search Bar */}
       <View style={styles.searchContainer}>
         <View style={styles.searchInputContainer}>
-          <Ionicons name="search" size={20} color="#49654E" style={styles.searchIcon} />
+          <Ionicons name="search" size={20} color="#5A7A61" style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
             placeholder="Search for jobs..."
-            placeholderTextColor="#49654E"
+            placeholderTextColor="#5A7A61"
             value={searchQuery}
             onChangeText={(text) => {
               setSearchQuery(text);
               setShowSuggestions(text.length > 0);
             }}
-            onSubmitEditing={handleSearch}
             returnKeyType="search"
           />
           {searchQuery.length > 0 && (
@@ -175,10 +190,11 @@ const JobSearchScreen = () => {
               onPress={() => {
                 setSearchQuery('');
                 setShowSuggestions(false);
+                setJobResults([]);
               }}
               style={styles.clearButton}
             >
-              <Ionicons name="close-circle" size={16} color="#49654E" />
+              <Ionicons name="close-circle" size={16} color="#5A7A61" />
             </TouchableOpacity>
           )}
         </View>
@@ -193,78 +209,82 @@ const JobSearchScreen = () => {
               style={styles.suggestionItem}
               onPress={() => handleSelectSuggestion(suggestion)}
             >
-              <Ionicons name="search-outline" size={14} color="#49654E" />
+              <Ionicons name="search-outline" size={14} color="#5A7A61" />
               <Text style={styles.suggestionText}>{suggestion}</Text>
             </TouchableOpacity>
           ))}
         </View>
       )}
       
-      {/* Loading Indicator */}
-      {isLoading && (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="small" color="#49654E" />
-          <Text style={styles.loadingText}>Searching jobs...</Text>
-        </View>
-      )}
-      
-      {/* Error Message */}
-      {error && !isLoading && (
-        <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle-outline" size={24} color="#49654E" />
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      )}
-      
-      {/* Job Results */}
-      {!isLoading && !error && jobResults.length > 0 && (
-        <FlatList
-          data={jobResults}
-          keyExtractor={(item) => item.job_id}
-          renderItem={({ item }) => <JobCard job={item} />}
-          contentContainerStyle={styles.jobList}
-          showsVerticalScrollIndicator={false}
-        />
-      )}
-      
-      {/* No Results */}
-      {!isLoading && !error && jobResults.length === 0 && searchQuery.trim() !== '' && (
-        <View style={styles.noResultsContainer}>
-          <Ionicons name="search-outline" size={40} color="#49654E" />
-          <Text style={styles.noResultsText}>No jobs found</Text>
-          <Text style={styles.noResultsSubtext}>Try different search terms</Text>
-        </View>
-      )}
-      
-      {/* Empty State */}
-      {!isLoading && !error && jobResults.length === 0 && searchQuery.trim() === '' && (
-        <View style={styles.emptyStateContainer}>
-          <Ionicons name="briefcase-outline" size={60} color="#49654E" />
-          <Text style={styles.emptyStateTitle}>Find Your Dream Job</Text>
-          <Text style={styles.emptyStateText}>
-            Start by searching for a job position
-          </Text>
-          <View style={styles.quickSearchContainer}>
-            <View style={styles.quickSearchButtonsRow}>
-              {['Developer', 'Designer', 'Manager'].map((term, index) => (
-                <TouchableOpacity 
-                  key={index}
-                  style={styles.quickSearchButton}
-                  onPress={() => {
-                    setSearchQuery(term);
-                    handleSearch();
-                  }}
-                >
-                  <Text style={styles.quickSearchButtonText}>{term}</Text>
-                </TouchableOpacity>
-              ))}
+      {/* Content Area */}
+      <View style={styles.contentContainer}>
+        {/* Loading Indicator */}
+        {isLoading && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color="#5A7A61" />
+            <Text style={styles.loadingText}>Searching jobs...</Text>
+          </View>
+        )}
+        
+        {/* Error Message */}
+        {error && !isLoading && (
+          <View style={styles.errorContainer}>
+            <Ionicons name="alert-circle-outline" size={24} color="#5A7A61" />
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
+        
+        {/* Job Results */}
+        {!isLoading && !error && jobResults.length > 0 && (
+          <FlatList
+            data={jobResults}
+            keyExtractor={(item) => item.job_id}
+            renderItem={({ item }) => <JobCard job={item} />}
+            contentContainerStyle={styles.jobList}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
+        
+        {/* No Results */}
+        {!isLoading && !error && jobResults.length === 0 && searchQuery.trim() !== '' && (
+          <View style={styles.noResultsContainer}>
+            <Ionicons name="search-outline" size={40} color="#5A7A61" />
+            <Text style={styles.noResultsText}>No jobs found</Text>
+            <Text style={styles.noResultsSubtext}>Try different search terms</Text>
+          </View>
+        )}
+        
+        {/* Empty State */}
+        {!isLoading && !error && jobResults.length === 0 && searchQuery.trim() === '' && (
+          <View style={styles.emptyStateContainer}>
+            <Ionicons name="briefcase-outline" size={50} color="#5A7A61" />
+            <Text style={styles.emptyStateTitle}>Find Your Dream Job</Text>
+            <Text style={styles.emptyStateText}>
+              Start by searching for a job position
+            </Text>
+            <View style={styles.quickSearchContainer}>
+              <View style={styles.quickSearchButtonsRow}>
+                {['Developer', 'Designer', 'Manager', 'Engineer', 'Analyst'].map((term, index) => (
+                  <TouchableOpacity 
+                    key={index}
+                    style={styles.quickSearchButton}
+                    onPress={() => {
+                      setSearchQuery(term);
+                    }}
+                  >
+                    <Text style={styles.quickSearchButtonText}>{term}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           </View>
-        </View>
-      )}
+        )}
+      </View>
       
       {/* Bottom Navbar */}
-      <BottomNavbar />
+      <View style={styles.navbarContainer}>
+        <BottomNavbar />
+      </View>
     </SafeAreaView>
   );
 };
@@ -272,27 +292,21 @@ const JobSearchScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#E8F5E9',
+    backgroundColor: '#F0F7F1',
   },
-  header: {
-    backgroundColor: '#49654E',
-    paddingVertical: 14,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 1,
-  },
-  headerTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
-    textAlign: 'center',
+  contentContainer: {
+    flex: 1,
   },
   searchContainer: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#E8F5E9',
+    paddingTop: 16,
+    paddingBottom: 8,
+    backgroundColor: '#F0F7F1',
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 1,
   },
   searchInputContainer: {
     flexDirection: 'row',
@@ -303,8 +317,8 @@ const styles = StyleSheet.create({
     height: 48,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowOpacity: 0.05,
+    shadowRadius: 1,
     elevation: 1,
   },
   searchIcon: {
@@ -321,14 +335,14 @@ const styles = StyleSheet.create({
   suggestionsContainer: {
     backgroundColor: '#FFFFFF',
     marginHorizontal: 16,
-    marginTop: -6,
     borderRadius: 8,
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.05,
     shadowRadius: 2,
     overflow: 'hidden',
+    zIndex: 10,
   },
   suggestionItem: {
     flexDirection: 'row',
@@ -368,27 +382,27 @@ const styles = StyleSheet.create({
   jobList: {
     paddingHorizontal: 16,
     paddingVertical: 8,
-    paddingBottom: 80, // Add bottom padding for the navbar
+    paddingBottom: 16,
   },
   jobCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 10,
-    marginBottom: 12,
-    padding: 14,
+    marginBottom: 10,
+    padding: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
+    shadowOpacity: 0.04,
+    shadowRadius: 1,
     elevation: 1,
   },
   jobHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   companyLogo: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     borderRadius: 6,
     backgroundColor: '#F5F5F5',
     marginRight: 10,
@@ -396,7 +410,7 @@ const styles = StyleSheet.create({
   placeholderLogo: {
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#49654E',
+    backgroundColor: '#5A7A61',
   },
   placeholderText: {
     color: '#FFFFFF',
@@ -408,13 +422,13 @@ const styles = StyleSheet.create({
   },
   jobTitle: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '500',
     color: '#253528',
     marginBottom: 2,
   },
   companyName: {
     fontSize: 13,
-    color: '#49654E',
+    color: '#5A7A61',
   },
   jobDetails: {
     marginBottom: 10,
@@ -422,15 +436,15 @@ const styles = StyleSheet.create({
   jobDetailItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 5,
+    marginBottom: 3,
   },
   jobDetailText: {
     fontSize: 12,
-    color: '#49654E',
+    color: '#5A7A61',
     marginLeft: 6,
   },
   viewButton: {
-    backgroundColor: '#49654E',
+    backgroundColor: '#5A7A61',
     borderRadius: 6,
     paddingVertical: 8,
     alignItems: 'center',
@@ -448,14 +462,14 @@ const styles = StyleSheet.create({
   },
   noResultsText: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '500',
     color: '#253528',
     marginTop: 12,
     textAlign: 'center',
   },
   noResultsSubtext: {
     fontSize: 14,
-    color: '#49654E',
+    color: '#5A7A61',
     marginTop: 6,
     textAlign: 'center',
   },
@@ -467,29 +481,31 @@ const styles = StyleSheet.create({
   },
   emptyStateTitle: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: '500',
     color: '#253528',
     marginTop: 12,
     textAlign: 'center',
   },
   emptyStateText: {
     fontSize: 14,
-    color: '#49654E',
+    color: '#5A7A61',
     marginTop: 6,
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   quickSearchContainer: {
     alignItems: 'center',
-    marginTop: 6,
+    marginTop: 8,
   },
   quickSearchButtonsRow: {
     flexDirection: 'row',
     justifyContent: 'center',
+    flexWrap: 'wrap',
+    maxWidth: 280,
   },
   quickSearchButton: {
-    backgroundColor: '#49654E',
-    paddingHorizontal: 14,
+    backgroundColor: '#5A7A61',
+    paddingHorizontal: 12,
     paddingVertical: 6,
     margin: 4,
     borderRadius: 16,
@@ -498,6 +514,13 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '500',
+  },
+  navbarContainer: {
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
   },
 });
 
