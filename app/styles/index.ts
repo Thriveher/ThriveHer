@@ -5,6 +5,7 @@ const SOFT_GREEN = '#8BA889';
 const DEEP_GREEN = '#253528';
 const MEDIUM_OLIVE = '#49654E';
 const WHITE = '#FFFFFF';
+const ERROR_RED = '#ff3b30';
 
 const { width, height } = Dimensions.get('window');
 
@@ -83,6 +84,20 @@ const styles = StyleSheet.create({
     color: WHITE,
     textAlign: 'center',
     letterSpacing: 1,
+  },
+  errorContainer: {
+    marginVertical: 10,
+    padding: 10,
+    width: '85%',
+  },
+  errorText: {
+    fontFamily: 'Montserrat-Regular',
+    fontSize: 14,
+    color: ERROR_RED,
+    textAlign: 'center',
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
 });
 
