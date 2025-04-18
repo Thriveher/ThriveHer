@@ -1,4 +1,5 @@
-import React from 'react';
+
+ import React from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, SafeAreaView } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
@@ -133,3 +134,4 @@ const styles = StyleSheet.create({
     color: '#49654E',
   },
 });
+
