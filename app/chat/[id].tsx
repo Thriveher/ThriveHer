@@ -1,4 +1,4 @@
-// src/screens/ChatScreen.tsx
+// app/chat/[id].tsx
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -13,7 +13,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useLocalSearchParams, router } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import ChatMessage from '../components/ChatMessage';
 
@@ -24,28 +24,22 @@ interface Message {
   timestamp: string;
 }
 
-interface RouteParams {
-  chatId?: string;
-  isNewChat?: boolean;
-}
-
-const ChatScreen = () => {
+export default function ChatDetailScreen() {
+  const { id } = useLocalSearchParams();
+  const isNewChat = id === 'new';
+  const initialChatId = isNewChat ? null : String(id);
+  
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const [chatTitle, setChatTitle] = useState('Career Guide');
-  const [chatId, setChatId] = useState<string | null>(null);
+  const [chatId, setChatId] = useState<string | null>(initialChatId);
   const flatListRef = useRef<FlatList>(null);
-  
-  const navigation = useNavigation();
-  const route = useRoute();
-  const { chatId: routeChatId, isNewChat } = route.params as RouteParams;
 
   useEffect(() => {
-    if (routeChatId) {
-      setChatId(routeChatId);
-      fetchChatMessages(routeChatId);
-      fetchChatDetails(routeChatId);
+    if (chatId) {
+      fetchChatMessages(chatId);
+      fetchChatDetails(chatId);
     } else if (isNewChat) {
       // Show welcome message for new chats
       const welcomeMessage: Message = {
@@ -56,7 +50,7 @@ const ChatScreen = () => {
       };
       setMessages([welcomeMessage]);
     }
-  }, [routeChatId, isNewChat]);
+  }, [chatId, isNewChat]);
 
   const fetchChatDetails = async (id: string) => {
     try {
@@ -210,7 +204,7 @@ const ChatScreen = () => {
   };
 
   const handleBackPress = () => {
-    navigation.goBack();
+    router.back();
   };
 
   useEffect(() => {
@@ -277,7 +271,7 @@ const ChatScreen = () => {
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -346,5 +340,3 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(73, 101, 78, 0.5)',
   },
 });
-
-export default ChatScreen;

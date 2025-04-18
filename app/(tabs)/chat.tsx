@@ -1,110 +1,115 @@
-// src/screens/ChatHistoryScreen.js
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import ChatCard from '../components/chatcard';
-import NavBar from '../components/navbar';
+// app/(tabs)/chat.tsx
+import React, { useEffect, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, FlatList, SafeAreaView, StatusBar } from 'react-native';
+import { Feather } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { supabase } from '../../lib/supabase';
+import ChatHistoryCard from '../components/ChatHistoryCard';
+ 
+interface ChatHistory {
+  id: string;
+  title: string;
+  last_message: string;
+  created_at: string;
+  updated_at: string;
+}
 
-const ChatHistoryScreen = ({ navigation }) => {
-  const [activeTab, setActiveTab] = useState('all');
-  
-  const chatHistory = [
-    { 
-      id: '1', 
-      title: 'Resume Review', 
-      lastMessage: 'Here are some improvements for your resume...', 
-      timestamp: '2 hours ago',
-      category: 'professional' 
-    },
-    { 
-      id: '2', 
-      title: 'Interview Preparation', 
-      lastMessage: 'Let\'s practice some common interview questions...', 
-      timestamp: '1 day ago',
-      category: 'professional' 
-    },
-    { 
-      id: '3', 
-      title: 'Work-Life Balance', 
-      lastMessage: 'These strategies might help you balance your career and personal life...', 
-      timestamp: '3 days ago',
-      category: 'personal' 
-    },
-    { 
-      id: '4', 
-      title: 'Salary Negotiation', 
-      lastMessage: 'When negotiating your salary, remember to highlight your achievements...', 
-      timestamp: '1 week ago',
-      category: 'professional' 
-    },
-  ];
+export default function ChatScreen() {
+  const [chatHistory, setChatHistory] = useState<ChatHistory[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filteredChats = activeTab === 'all' 
-    ? chatHistory 
-    : chatHistory.filter(chat => chat.category === activeTab);
+  useEffect(() => {
+    fetchChatHistory();
+  }, []);
+
+  const fetchChatHistory = async () => {
+    try {
+      setLoading(true);
+      
+      // Get user ID from auth
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        // Fetch chat history from Supabase
+        const { data, error } = await supabase
+          .from('chat_sessions')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('updated_at', { ascending: false });
+          
+        if (error) throw error;
+        
+        if (data) {
+          setChatHistory(data);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching chat history:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleNewChat = () => {
+    // Navigate to new chat using expo-router
+    router.push('/chat/new');
+  };
+
+  const handleChatSelect = (chatId: string) => {
+    // Navigate to specific chat using expo-router
+    router.push(`/chat/${chatId}`);
+  };
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar backgroundColor="#8BA889" barStyle="dark-content" />
+      
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Chat History</Text>
+        <Text style={styles.headerTitle}>Your Conversations</Text>
         <TouchableOpacity 
-          style={styles.newChatButton}
-          onPress={() => navigation.navigate('ChatScreen', { isNewChat: true })}
+          style={styles.newChatButton} 
+          onPress={handleNewChat}
+          activeOpacity={0.7}
         >
+          <Feather name="plus" size={20} color="#FFFFFF" />
           <Text style={styles.newChatText}>New Chat</Text>
-          <Ionicons name="add-circle-outline" size={20} color="#253528" />
         </TouchableOpacity>
       </View>
       
-      <View style={styles.tabContainer}>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'all' && styles.activeTab]}
-          onPress={() => setActiveTab('all')}
-        >
-          <Text style={[styles.tabText, activeTab === 'all' && styles.activeTabText]}>All</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'professional' && styles.activeTab]}
-          onPress={() => setActiveTab('professional')}
-        >
-          <Text style={[styles.tabText, activeTab === 'professional' && styles.activeTabText]}>Professional</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'personal' && styles.activeTab]}
-          onPress={() => setActiveTab('personal')}
-        >
-          <Text style={[styles.tabText, activeTab === 'personal' && styles.activeTabText]}>Personal</Text>
-        </TouchableOpacity>
-      </View>
-      
-      <ScrollView style={styles.chatList}>
-        {filteredChats.length > 0 ? (
-          filteredChats.map(chat => (
-            <ChatCard 
-              key={chat.id}
-              title={chat.title}
-              lastMessage={chat.lastMessage}
-              timestamp={chat.timestamp}
-              onPress={() => navigation.navigate('ChatScreen', { chatId: chat.id, title: chat.title })}
+      {chatHistory.length === 0 && !loading ? (
+        <View style={styles.emptyState}>
+          <Feather name="message-circle" size={60} color="#49654E" />
+          <Text style={styles.emptyStateTitle}>No conversations yet</Text>
+          <Text style={styles.emptyStateText}>
+            Start your first chat with your career guide assistant
+          </Text>
+          <TouchableOpacity 
+            style={styles.startChatButton} 
+            onPress={handleNewChat}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.startChatText}>Start a Chat</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <FlatList
+          data={chatHistory}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <ChatHistoryCard
+              title={item.title}
+              lastMessage={item.last_message}
+              date={new Date(item.updated_at)}
+              onPress={() => handleChatSelect(item.id)}
             />
-          ))
-        ) : (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>No chats found</Text>
-            <TouchableOpacity 
-              style={styles.startChatButton}
-              onPress={() => navigation.navigate('ChatScreen', { isNewChat: true })}
-            >
-              <Text style={styles.startChatText}>Start a Chat</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </ScrollView>
-      
-      <NavBar navigation={navigation} currentScreen="history" />
+          )}
+          contentContainerStyle={styles.listContainer}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
     </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -115,79 +120,60 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(37, 53, 40, 0.1)',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: '#8BA889',
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#253528',
   },
   newChatButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#49654E',
     paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#49654E',
   },
   newChatText: {
-    color: '#253528',
-    marginRight: 4,
-    fontWeight: '500',
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    paddingBottom: 8,
-  },
-  tab: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    marginRight: 8,
-    borderRadius: 20,
-  },
-  activeTab: {
-    backgroundColor: '#49654E',
-  },
-  tabText: {
-    color: '#253528',
-    fontWeight: '500',
-  },
-  activeTabText: {
     color: '#FFFFFF',
+    fontWeight: '600',
+    marginLeft: 6,
   },
-  chatList: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
+  listContainer: {
+    padding: 16,
+    paddingBottom: 80, // Extra space for the bottom navbar
   },
   emptyState: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
-    marginTop: 60,
+    padding: 20,
+  },
+  emptyStateTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#253528',
+    marginTop: 16,
+    marginBottom: 8,
   },
   emptyStateText: {
     fontSize: 16,
-    color: '#49654E',
-    marginBottom: 16,
+    color: '#253528',
+    textAlign: 'center',
+    marginBottom: 24,
   },
   startChatButton: {
     backgroundColor: '#253528',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 25,
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 30,
   },
   startChatText: {
     color: '#FFFFFF',
-    fontWeight: 'bold',
+    fontWeight: '600',
+    fontSize: 16,
   },
 });
-
-export default ChatHistoryScreen;
