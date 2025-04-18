@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, ScrollView, Image, TouchableOpacity } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import Navbar from '../components/navbar';
 
 // Define types for our data
 interface Experience {
@@ -42,47 +43,93 @@ interface ProfileData {
 }
 
 const ProfileScreen = () => {
-  // Assume profileData is imported from elsewhere
+  // Updated profile data for an Indian woman in tech
   const profileData = {
-    name: "Jane Doe",
-    headline: "UX Designer & Developer",
-    currentCompany: "Tech Innovations Inc.",
-    location: "San Francisco, CA",
+    name: "Priya Sharma",
+    headline: "Full Stack Developer & AI Enthusiast",
+    currentCompany: "Infosys",
+    location: "Bangalore, India",
     profileImage: "https://example.com/profile.jpg",
-    about: "Passionate designer with over 5 years experience creating intuitive digital experiences.",
+    about: "Passionate technology professional with over 7 years of experience creating scalable software solutions and AI-powered applications. Specializing in building accessible and intuitive digital experiences for enterprise clients. Advocate for women in tech and regular speaker at tech conferences across India.",
     experience: [
       {
-        title: "Senior UX Designer",
-        company: "Tech Innovations Inc.",
-        companyLogo: "https://example.com/tech.png",
+        title: "Senior Software Engineer",
+        company: "Infosys",
+        companyLogo: "https://example.com/infosys.png",
         duration: "Jan 2022 - Present",
-        location: "San Francisco, CA",
-        description: "Leading design initiatives for flagship products and mentoring junior designers."
+        location: "Bangalore, India",
+        description: "Leading development of enterprise-level applications using React Native and Node.js. Mentoring junior developers and contributing to company's diversity initiatives."
+      },
+      {
+        title: "Software Developer",
+        company: "TCS",
+        companyLogo: "https://example.com/tcs.png",
+        duration: "Jun 2018 - Dec 2021",
+        location: "Hyderabad, India",
+        description: "Developed and maintained multiple client-facing web applications. Specialized in front-end development using React and backend integration with Java-based services."
       }
     ],
     education: [
       {
-        institution: "Design University",
-        logo: "https://example.com/uni.png",
-        degree: "Master of Design",
-        duration: "2018 - 2020"
+        institution: "Indian Institute of Technology, Delhi",
+        logo: "https://example.com/iit.png",
+        degree: "Master of Technology in Computer Science",
+        duration: "2016 - 2018"
+      },
+      {
+        institution: "Delhi University",
+        logo: "https://example.com/du.png",
+        degree: "Bachelor of Engineering in Information Technology",
+        duration: "2012 - 2016"
       }
     ],
-    skills: ["UX Design", "UI Design", "Prototyping", "User Research", "Figma", "React Native"],
+    skills: [
+      "React Native", 
+      "React.js", 
+      "Node.js", 
+      "TypeScript", 
+      "Python", 
+      "TensorFlow", 
+      "Machine Learning",
+      "Data Structures", 
+      "API Development",
+      "GraphQL",
+      "AWS",
+      "Azure",
+      "Docker",
+      "Kubernetes",
+      "MongoDB",
+      "SQL",
+      "System Design",
+      "Algorithm Optimization",
+      "CI/CD",
+      "Git",
+      "Agile Methodologies",
+      "Technical Leadership"
+    ],
     accomplishments: [
-      "Best Designer Award 2023",
-      "Published in UX Magazine",
-      "Speaker at Design Conference 2022"
+      "Women in Tech Excellence Award 2023",
+      "Published research paper on ML optimization in IEEE Journal",
+      "Speaker at React India Conference 2022",
+      "Open source contributor to popular React Native libraries",
+      "Mentor at Women Who Code Bangalore",
+      "Certified AWS Solutions Architect"
     ],
     recommendations: [
       {
-        name: "John Smith",
-        title: "Product Manager at Tech Co",
-        image: "https://example.com/john.jpg",
-        text: "Jane is an exceptional designer who brings both creativity and strategic thinking."
+        name: "Raj Mehta",
+        title: "Engineering Manager at Infosys",
+        image: "https://example.com/raj.jpg",
+        text: "Priya is an outstanding engineer who brings both technical expertise and leadership qualities to her work. Her contributions have been crucial to our team's success."
+      },
+      {
+        name: "Ananya Desai",
+        title: "CTO at TechWomen India",
+        image: "https://example.com/ananya.jpg",
+        text: "I've had the pleasure of working with Priya on several diversity initiatives. Her technical knowledge combined with her passion for mentoring makes her an incredible asset to the tech community."
       }
     ],
-    connectionCount: 500
+    connectionCount: 850
   };
 
   const {
@@ -361,14 +408,6 @@ const ProfileScreen = () => {
     navbarSpacing: {
       height: 60,
     },
-    navbarWrapper: {
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      backgroundColor: '#ffffff',
-      elevation: 8,
-    },
   };
 
   const renderExperienceItem = (item, index) => (
@@ -501,10 +540,8 @@ const ProfileScreen = () => {
         <View style={styles.navbarSpacing} />
       </ScrollView>
       
-      {/* Navbar placeholder - actual Navbar component would be imported */}
-      <View style={styles.navbarWrapper}>
-        {/* Navbar component would go here */}
-      </View>
+      {/* Imported Navbar component */}
+      <Navbar />
     </View>
   );
 };

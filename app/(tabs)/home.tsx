@@ -1,151 +1,135 @@
 import React from 'react';
-import { SafeAreaView, ScrollView, View, Text, StyleSheet, StatusBar, TouchableOpacity } from 'react-native';
-import { Feather } from '@expo/vector-icons';
-import Posts from '../components/posts';
-import { posts } from '../data/post';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, SafeAreaView } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { useNavigation } from '@react-navigation/native';
+import { learningTopics } from '../data/topics';
 import Navbar from '../components/navbar';
 
-const Home = () => {
+export default function HomePage() {
+  const navigation = useNavigation();
+
+  const handleTopicPress = (topicId) => {
+    navigation.navigate('tabs', {
+      screen: 'Lessons',
+      params: { topicId: topicId }
+    });
+  };
+
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar backgroundColor="#F5F7F5" barStyle="dark-content" />
-      
-      <ScrollView style={styles.scrollView}>
-        {/* Create Post Section */}
-        <View style={styles.createPost}>
-          <View style={styles.createPostHeader}>
-            <View style={styles.profilePicSmall}>
-              <Text style={styles.profileInitialSmall}>P</Text>
-            </View>
-            <TouchableOpacity style={styles.postInput} activeOpacity={0.7}>
-              <Text style={styles.postInputText}>What's on your mind?</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.messageIcon}>
-              <Feather name="message-square" size={22} color="#49654E" />
-            </TouchableOpacity>
-          </View>
-          <View style={styles.createPostActions}>
-            <TouchableOpacity style={styles.actionItem}>
-              <Feather name="image" size={20} color="#49654E" />
-              <Text style={styles.actionText}>Photo</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionItem}>
-              <Feather name="video" size={20} color="#49654E" />
-              <Text style={styles.actionText}>Video</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionItem}>
-              <Feather name="calendar" size={20} color="#49654E" />
-              <Text style={styles.actionText}>Event</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionItem}>
-              <Feather name="file-text" size={20} color="#49654E" />
-              <Text style={styles.actionText}>Article</Text>
-            </TouchableOpacity>
-          </View>
+      <StatusBar style="dark" />
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={styles.header}>
+          <Text style={styles.title}>My Learning Journey</Text>
+          <Text style={styles.subtitle}>Track your progress across different skills</Text>
         </View>
-        
-        {/* Divider */}
-        <View style={styles.divider} />
-        
-        {/* Posts Feed */}
-        <View style={styles.feed}>
-          {posts.map((post, index) => (
-            <Posts key={index} post={post} />
+        <View style={styles.cardsContainer}>
+          {learningTopics.map((topic) => (
+            <TouchableOpacity 
+              key={topic.id} 
+              style={styles.card}
+              activeOpacity={0.7}
+              onPress={() => handleTopicPress(topic.id)}
+            >
+              <View style={[styles.iconContainer, {backgroundColor: topic.bgColor || '#8BA889'}]}>
+                <Text style={styles.icon}>{topic.icon}</Text>
+              </View>
+              <View style={styles.cardContent}>
+                <Text style={styles.cardTitle}>{topic.title}</Text>
+                <Text style={styles.cardSubtitle}>{topic.description}</Text>
+                <View style={styles.progressContainer}>
+                  <View style={[styles.progressBar, {width: `${topic.progress}%`}]} />
+                </View>
+                <Text style={styles.progressText}>{topic.progress}% complete</Text>
+              </View>
+            </TouchableOpacity>
           ))}
         </View>
       </ScrollView>
       
-      {/* Navbar */}
       <Navbar />
     </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F7F5',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  createPost: {
     backgroundColor: '#FFFFFF',
+  },
+  scrollContent: {
     padding: 16,
+  },
+  header: {
+    marginBottom: 24,
     marginTop: 8,
-    marginHorizontal: 10,
-    borderRadius: 16,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#253528',
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#49654E',
+  },
+  cardsContainer: {
+    gap: 16,
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    flexDirection: 'row',
+    padding: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
   },
-  createPostHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  profilePicSmall: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#49654E',
+  iconContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 16,
   },
-  profileInitialSmall: {
+  icon: {
+    fontSize: 28,
     color: '#FFFFFF',
+  },
+  cardContent: {
+    flex: 1,
+  },
+  cardTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    color: '#253528',
+    marginBottom: 4,
   },
-  postInput: {
-    flex: 1,
-    backgroundColor: '#F5F7F5',
-    padding: 14,
-    borderRadius: 24,
-  },
-  postInputText: {
-    color: '#888',
-    fontSize: 15,
-  },
-  messageIcon: {
-    marginLeft: 12,
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#F5F7F5',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  createPostActions: {
-    flexDirection: 'row',
-    marginTop: 16,
-    justifyContent: 'space-between',
-    paddingHorizontal: 8,
-  },
-  actionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 20,
-    backgroundColor: '#F5F7F5',
-  },
-  actionText: {
-    marginLeft: 6,
-    fontSize: 13,
+  cardSubtitle: {
+    fontSize: 14,
     color: '#49654E',
-    fontWeight: '500',
+    marginBottom: 12,
   },
-  divider: {
+  progressContainer: {
     height: 8,
-    backgroundColor: '#F5F7F5',
+    backgroundColor: '#E8EFE8',
+    borderRadius: 4,
+    marginBottom: 4,
+    overflow: 'hidden',
   },
-  feed: {
-    flex: 1,
-    paddingHorizontal: 10,
+  progressBar: {
+    height: '100%',
+    backgroundColor: '#8BA889',
+    borderRadius: 4,
+  },
+  progressText: {
+    fontSize: 12,
+    color: '#49654E',
   },
 });
-
-export default Home;
