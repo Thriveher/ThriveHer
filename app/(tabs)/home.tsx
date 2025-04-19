@@ -1,19 +1,20 @@
-
- import React from 'react';
+import React from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, SafeAreaView } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
 import { learningTopics } from '../data/topics';
 import Navbar from '../components/navbar';
+import { router } from 'expo-router';
+
 
 export default function HomePage() {
-  const navigation = useNavigation();
+  // Use the correctly typed navigator for React Navigation
+  const navigation = useNavigation<any>();
 
-  const handleTopicPress = (topicId) => {
-    navigation.navigate('tabs', {
-      screen: 'Lessons',
-      params: { topicId: topicId }
-    });
+  // Add proper type for topicId parameter
+  const handleTopicPress = (topicId: string | number) => {
+    // Use router.push with the exact path format
+    router.push(`/skills/${topicId}`);
   };
 
   return (
@@ -134,4 +135,3 @@ const styles = StyleSheet.create({
     color: '#49654E',
   },
 });
-
