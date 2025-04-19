@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, Image, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, Image } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import Navbar from '../components/navbar';
 
@@ -10,7 +10,6 @@ interface Experience {
   companyLogo: string;
   duration: string;
   location: string;
-  description: string;
 }
 
 interface Education {
@@ -20,11 +19,9 @@ interface Education {
   duration: string;
 }
 
-interface Recommendation {
+interface Skill {
   name: string;
-  title: string;
-  image: string;
-  text: string;
+  level: 'beginner' | 'intermediate' | 'advanced' | 'expert';
 }
 
 interface ProfileData {
@@ -36,37 +33,32 @@ interface ProfileData {
   about: string;
   experience: Experience[];
   education: Education[];
-  skills: string[];
-  accomplishments: string[];
-  recommendations: Recommendation[];
-  connectionCount?: number;
+  skills: Skill[];
 }
 
 const ProfileScreen = () => {
-  // Updated profile data for an Indian woman in tech
+  // Simplified profile data
   const profileData = {
     name: "Priya Sharma",
     headline: "Full Stack Developer & AI Enthusiast",
     currentCompany: "Infosys",
     location: "Bangalore, India",
     profileImage: "https://example.com/profile.jpg",
-    about: "Passionate technology professional with over 7 years of experience creating scalable software solutions and AI-powered applications. Specializing in building accessible and intuitive digital experiences for enterprise clients. Advocate for women in tech and regular speaker at tech conferences across India.",
+    about: "Passionate technology professional with over 7 years of experience creating scalable software solutions and AI-powered applications. Advocate for women in tech and regular speaker at tech conferences across India.",
     experience: [
       {
         title: "Senior Software Engineer",
         company: "Infosys",
         companyLogo: "https://example.com/infosys.png",
         duration: "Jan 2022 - Present",
-        location: "Bangalore, India",
-        description: "Leading development of enterprise-level applications using React Native and Node.js. Mentoring junior developers and contributing to company's diversity initiatives."
+        location: "Bangalore, India"
       },
       {
         title: "Software Developer",
         company: "TCS",
         companyLogo: "https://example.com/tcs.png",
         duration: "Jun 2018 - Dec 2021",
-        location: "Hyderabad, India",
-        description: "Developed and maintained multiple client-facing web applications. Specialized in front-end development using React and backend integration with Java-based services."
+        location: "Hyderabad, India"
       }
     ],
     education: [
@@ -75,61 +67,18 @@ const ProfileScreen = () => {
         logo: "https://example.com/iit.png",
         degree: "Master of Technology in Computer Science",
         duration: "2016 - 2018"
-      },
-      {
-        institution: "Delhi University",
-        logo: "https://example.com/du.png",
-        degree: "Bachelor of Engineering in Information Technology",
-        duration: "2012 - 2016"
       }
     ],
     skills: [
-      "React Native", 
-      "React.js", 
-      "Node.js", 
-      "TypeScript", 
-      "Python", 
-      "TensorFlow", 
-      "Machine Learning",
-      "Data Structures", 
-      "API Development",
-      "GraphQL",
-      "AWS",
-      "Azure",
-      "Docker",
-      "Kubernetes",
-      "MongoDB",
-      "SQL",
-      "System Design",
-      "Algorithm Optimization",
-      "CI/CD",
-      "Git",
-      "Agile Methodologies",
-      "Technical Leadership"
-    ],
-    accomplishments: [
-      "Women in Tech Excellence Award 2023",
-      "Published research paper on ML optimization in IEEE Journal",
-      "Speaker at React India Conference 2022",
-      "Open source contributor to popular React Native libraries",
-      "Mentor at Women Who Code Bangalore",
-      "Certified AWS Solutions Architect"
-    ],
-    recommendations: [
-      {
-        name: "Raj Mehta",
-        title: "Engineering Manager at Infosys",
-        image: "https://example.com/raj.jpg",
-        text: "Priya is an outstanding engineer who brings both technical expertise and leadership qualities to her work. Her contributions have been crucial to our team's success."
-      },
-      {
-        name: "Ananya Desai",
-        title: "CTO at TechWomen India",
-        image: "https://example.com/ananya.jpg",
-        text: "I've had the pleasure of working with Priya on several diversity initiatives. Her technical knowledge combined with her passion for mentoring makes her an incredible asset to the tech community."
-      }
-    ],
-    connectionCount: 850
+      { name: "React Native", level: "expert" },
+      { name: "React.js", level: "expert" },
+      { name: "Node.js", level: "advanced" },
+      { name: "TypeScript", level: "advanced" },
+      { name: "Python", level: "intermediate" },
+      { name: "TensorFlow", level: "intermediate" },
+      { name: "AWS", level: "advanced" },
+      { name: "MongoDB", level: "intermediate" }
+    ]
   };
 
   const {
@@ -141,10 +90,7 @@ const ProfileScreen = () => {
     about,
     experience,
     education,
-    skills,
-    accomplishments,
-    recommendations,
-    connectionCount = 500
+    skills
   } = profileData;
 
   const styles = {
@@ -204,46 +150,6 @@ const ProfileScreen = () => {
       color: '#555555',
     },
     
-    // Action buttons
-    actionButtonsContainer: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      marginTop: 16,
-    },
-    primaryButton: {
-      backgroundColor: '#49654E',
-      paddingVertical: 10,
-      paddingHorizontal: 16,
-      borderRadius: 20,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      flex: 1,
-      marginRight: 8,
-    },
-    primaryButtonText: {
-      color: '#FFFFFF',
-      fontWeight: '500',
-    },
-    secondaryButton: {
-      backgroundColor: '#e8f4e9',
-      paddingVertical: 10,
-      paddingHorizontal: 16,
-      borderRadius: 20,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      flex: 1,
-      marginLeft: 8,
-    },
-    secondaryButtonText: {
-      color: '#253528',
-      fontWeight: '500',
-    },
-    buttonIconSpacing: {
-      marginRight: 8,
-    },
-    
     // Content sections
     section: {
       backgroundColor: '#ffffff',
@@ -257,12 +163,6 @@ const ProfileScreen = () => {
       fontSize: 18,
       fontWeight: '600',
       color: '#253528',
-      marginBottom: 12,
-    },
-    sectionTitleRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
       marginBottom: 12,
     },
     
@@ -310,12 +210,6 @@ const ProfileScreen = () => {
       fontSize: 12,
       color: '#666666',
     },
-    experienceDescription: {
-      fontSize: 14,
-      lineHeight: 20,
-      color: '#333333',
-      textAlign: 'justify',
-    },
     
     // Education section
     educationItem: {
@@ -352,6 +246,8 @@ const ProfileScreen = () => {
       flexWrap: 'wrap',
     },
     skillItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
       backgroundColor: '#e8f4e9',
       borderRadius: 16,
       paddingVertical: 6,
@@ -362,46 +258,23 @@ const ProfileScreen = () => {
       fontSize: 13,
       color: '#49654E',
     },
-    
-    // Accomplishments section
-    accomplishmentItem: {
-      fontSize: 14,
-      lineHeight: 22,
-      color: '#333333',
-      marginBottom: 8,
-      textAlign: 'justify',
+    skillBadge: {
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      marginLeft: 6,
     },
-    
-    // Recommendations section
-    recommendationItem: {
-      flexDirection: 'row',
-      marginBottom: 16,
+    skillBadgeExpert: {
+      backgroundColor: '#49654E',
     },
-    recommenderImage: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      marginRight: 12,
+    skillBadgeAdvanced: {
+      backgroundColor: '#78a97e',
     },
-    recommendationContent: {
-      flex: 1,
+    skillBadgeIntermediate: {
+      backgroundColor: '#a7cba9',
     },
-    recommenderName: {
-      fontSize: 16,
-      fontWeight: '500',
-      color: '#253528',
-    },
-    recommenderTitle: {
-      fontSize: 12,
-      color: '#666666',
-      marginBottom: 4,
-    },
-    recommendationText: {
-      fontSize: 14,
-      fontStyle: 'italic',
-      lineHeight: 20,
-      color: '#333333',
-      textAlign: 'justify',
+    skillBadgeBeginner: {
+      backgroundColor: '#d8ebd9',
     },
     
     // Bottom spacing for navbar
@@ -420,7 +293,6 @@ const ProfileScreen = () => {
           <Text style={styles.experienceDuration}>{item.duration}</Text>
           <Text style={styles.experienceLocation}> • {item.location}</Text>
         </View>
-        <Text style={styles.experienceDescription}>{item.description}</Text>
       </View>
     </View>
   );
@@ -436,11 +308,22 @@ const ProfileScreen = () => {
     </View>
   );
 
-  const renderSkillItem = (skill, index) => (
-    <View key={index} style={styles.skillItem}>
-      <Text style={styles.skillText}>{skill}</Text>
-    </View>
-  );
+  const renderSkillItem = (skill, index) => {
+    const badgeStyle = [
+      styles.skillBadge,
+      skill.level === 'expert' && styles.skillBadgeExpert,
+      skill.level === 'advanced' && styles.skillBadgeAdvanced,
+      skill.level === 'intermediate' && styles.skillBadgeIntermediate,
+      skill.level === 'beginner' && styles.skillBadgeBeginner,
+    ];
+    
+    return (
+      <View key={index} style={styles.skillItem}>
+        <Text style={styles.skillText}>{skill.name}</Text>
+        <View style={badgeStyle} />
+      </View>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -466,24 +349,6 @@ const ProfileScreen = () => {
               <Feather name="map-pin" size={14} color="#49654E" style={styles.infoIcon} />
               <Text style={styles.infoText}>{location}</Text>
             </View>
-            
-            <View style={styles.infoRow}>
-              <Feather name="users" size={14} color="#49654E" style={styles.infoIcon} />
-              <Text style={styles.infoText}>{connectionCount} connections</Text>
-            </View>
-          </View>
-          
-          {/* Action Buttons */}
-          <View style={styles.actionButtonsContainer}>
-            <TouchableOpacity style={styles.primaryButton}>
-              <Feather name="message-circle" size={16} color="#FFFFFF" style={styles.buttonIconSpacing} />
-              <Text style={styles.primaryButtonText}>Message</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.secondaryButton}>
-              <Feather name="user-plus" size={16} color="#253528" style={styles.buttonIconSpacing} />
-              <Text style={styles.secondaryButtonText}>Connect</Text>
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -491,6 +356,14 @@ const ProfileScreen = () => {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>About</Text>
           <Text style={styles.aboutText}>{about}</Text>
+        </View>
+
+        {/* Skills Section - Moved up in importance */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Skills</Text>
+          <View style={styles.skillsContainer}>
+            {skills.map(renderSkillItem)}
+          </View>
         </View>
 
         {/* Experience Section */}
@@ -503,37 +376,6 @@ const ProfileScreen = () => {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Education</Text>
           {education.map(renderEducationItem)}
-        </View>
-
-        {/* Skills Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Skills</Text>
-          <View style={styles.skillsContainer}>
-            {skills.map(renderSkillItem)}
-          </View>
-        </View>
-
-        {/* Accomplishments Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Accomplishments</Text>
-          {accomplishments.map((item, index) => (
-            <Text key={index} style={styles.accomplishmentItem}>• {item}</Text>
-          ))}
-        </View>
-
-        {/* Recommendations Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recommendations</Text>
-          {recommendations.map((item, index) => (
-            <View key={index} style={styles.recommendationItem}>
-              <Image source={{ uri: item.image }} style={styles.recommenderImage} />
-              <View style={styles.recommendationContent}>
-                <Text style={styles.recommenderName}>{item.name}</Text>
-                <Text style={styles.recommenderTitle}>{item.title}</Text>
-                <Text style={styles.recommendationText}>"{item.text}"</Text>
-              </View>
-            </View>
-          ))}
         </View>
         
         {/* Extra space at bottom for navbar */}
