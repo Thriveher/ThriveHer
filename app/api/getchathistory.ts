@@ -4,9 +4,9 @@ import { format, formatDistanceToNow } from 'date-fns';
 // Types
 export interface ChatHistoryItem {
   id: string;
-  name: string;
-  createdAt: string;
-  updatedAt: string;
+  title: string;  // Changed from 'name' to match your table structure
+  created_at: string;  // Changed from camelCase to snake_case to match table
+  updated_at: string;  // Changed from camelCase to snake_case to match table
   messageCount?: number;
   lastMessage?: string;
   formattedDate?: string;
@@ -19,7 +19,7 @@ const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 /**
- * Fetches all chat histories with name and timestamp information
+ * Fetches all chat histories with title and timestamp information
  * @returns Array of chat history items
  */
 export const getChatHistory = async (): Promise<ChatHistoryItem[]> => {
@@ -28,18 +28,18 @@ export const getChatHistory = async (): Promise<ChatHistoryItem[]> => {
       .from('chats')
       .select(`
         id,
-        name,
-        createdAt,
-        updatedAt
+        title,
+        created_at,
+        updated_at
       `)
-      .order('updatedAt', { ascending: false });
+      .order('updated_at', { ascending: false });
     
     if (error) throw error;
     
     // Format dates and add time ago for each chat
     const formattedData = data.map(chat => {
-      const createdDate = new Date(chat.createdAt);
-      const updatedDate = new Date(chat.updatedAt);
+      const createdDate = new Date(chat.created_at);
+      const updatedDate = new Date(chat.updated_at);
       
       return {
         ...chat,
@@ -78,16 +78,16 @@ export const getDetailedChatHistory = async (): Promise<ChatHistoryItem[]> => {
         // Get last message
         const { data: messages, error: msgError } = await supabase
           .from('messages')
-          .select('content, role')
+          .select('content, is_user_message')  // Changed from 'role' to 'is_user_message'
           .eq('chat_id', chat.id)
-          .order('createdAt', { ascending: false })
+          .order('timestamp', { ascending: false })  // Changed from 'createdAt' to 'timestamp'
           .limit(1);
         
         if (msgError) throw msgError;
         
         // Format last message preview (truncate if needed)
         const lastMessage = messages && messages.length > 0 
-          ? `${messages[0].role === 'user' ? 'You: ' : 'AI: '}${truncateText(messages[0].content, 50)}`
+          ? `${messages[0].is_user_message ? 'You: ' : 'AI: '}${truncateText(messages[0].content, 50)}`
           : 'No messages yet';
         
         return {
@@ -106,8 +106,8 @@ export const getDetailedChatHistory = async (): Promise<ChatHistoryItem[]> => {
 };
 
 /**
- * Searches chat history by name
- * @param searchTerm Term to search for in chat names
+ * Searches chat history by title
+ * @param searchTerm Term to search for in chat titles
  * @returns Filtered array of chat history items
  */
 export const searchChatHistory = async (searchTerm: string): Promise<ChatHistoryItem[]> => {
@@ -116,18 +116,18 @@ export const searchChatHistory = async (searchTerm: string): Promise<ChatHistory
       .from('chats')
       .select(`
         id,
-        name,
-        createdAt,
-        updatedAt
+        title,
+        created_at,
+        updated_at
       `)
-      .ilike('name', `%${searchTerm}%`)
-      .order('updatedAt', { ascending: false });
+      .ilike('title', `%${searchTerm}%`)  // Changed from 'name' to 'title'
+      .order('updated_at', { ascending: false });
     
     if (error) throw error;
     
     // Format dates and add time ago for each chat
     const formattedData = data.map(chat => {
-      const updatedDate = new Date(chat.updatedAt);
+      const updatedDate = new Date(chat.updated_at);
       
       return {
         ...chat,
@@ -154,18 +154,18 @@ export const getRecentChats = async (limit: number = 5): Promise<ChatHistoryItem
       .from('chats')
       .select(`
         id,
-        name,
-        createdAt,
-        updatedAt
+        title,
+        created_at,
+        updated_at
       `)
-      .order('updatedAt', { ascending: false })
+      .order('updated_at', { ascending: false })
       .limit(limit);
     
     if (error) throw error;
     
     // Format dates and add time ago for each chat
     const formattedData = data.map(chat => {
-      const updatedDate = new Date(chat.updatedAt);
+      const updatedDate = new Date(chat.updated_at);
       
       return {
         ...chat,
@@ -196,18 +196,18 @@ export const getChatsFromPeriod = async (days: number = 7): Promise<ChatHistoryI
       .from('chats')
       .select(`
         id,
-        name,
-        createdAt,
-        updatedAt
+        title,
+        created_at,
+        updated_at
       `)
-      .gte('createdAt', startDateIso)
-      .order('updatedAt', { ascending: false });
+      .gte('created_at', startDateIso)  // Changed from 'createdAt' to 'created_at'
+      .order('updated_at', { ascending: false });
     
     if (error) throw error;
     
     // Format dates and add time ago for each chat
     const formattedData = data.map(chat => {
-      const updatedDate = new Date(chat.updatedAt);
+      const updatedDate = new Date(chat.updated_at);
       
       return {
         ...chat,
@@ -233,7 +233,7 @@ export const getChatHistoryByDate = async (): Promise<Record<string, ChatHistory
     
     // Group chats by date
     const groupedChats = chatHistory.reduce((groups, chat) => {
-      const date = new Date(chat.updatedAt);
+      const date = new Date(chat.updated_at);
       const dateKey = format(date, 'yyyy-MM-dd');
       
       if (!groups[dateKey]) {

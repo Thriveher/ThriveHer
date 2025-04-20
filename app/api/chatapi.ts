@@ -46,11 +46,12 @@ export const sendMessage = async (
   context: string
 ): Promise<void> => {
   try {
-    // Call the stored procedure to add message pair
+    // Call the stored procedure to add message pair with corrected parameter order
+    // Based on the error hint: public.add_message_pair(p_bot_response, p_chat_id, p_user_message)
     const { error } = await supabase.rpc('add_message_pair', {
-      chat_id: chatId,
-      user_message: userMessage,
-      bot_response: botResponse
+      p_bot_response: botResponse,
+      p_chat_id: chatId,
+      p_user_message: userMessage
     });
     
     if (error) throw error;
@@ -82,15 +83,13 @@ export const createNewChatWithMessage = async (
   context: string
 ): Promise<string> => {
   try {
-    // Based on the error message, update the parameter order to match what's in your database
-    // The hint suggests the correct function signature is:
-    // create_chat_with_message(p_bot_response, p_context, p_title, p_user_id, p_user_message)
+    // Fixed the function name to create_chat_with_messages (plural) as indicated by the error hint
     const { data, error } = await supabase.rpc('create_chat_with_messages', {
-      p_bot_response: botResponse,
-      p_context: context,
-      p_title: title,
       p_user_id: userId,
-      p_user_message: userMessage
+      p_title: title,
+      p_user_message: userMessage,
+      p_bot_response: botResponse,
+      p_context: context
     });
     
     if (error) {

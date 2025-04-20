@@ -30,7 +30,8 @@ const ChatHistoryScreen = () => {
   };
 
   const handleChatPress = (chat: ChatHistoryItem) => {
-    router.push(`/chat/${chat.id}?name=${encodeURIComponent(chat.name)}`);
+    // Updated to use 'title' instead of 'name'
+    router.push(`/chat/${chat.id}?name=${encodeURIComponent(chat.title)}`);
   };
 
   const handleNewChat = async () => {
@@ -101,11 +102,13 @@ const ChatHistoryScreen = () => {
       android_ripple={{ color: 'rgba(73, 101, 78, 0.1)' }}
     >
       <View style={styles.avatarContainer}>
-        <Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text>
+        {/* Updated to use 'title' instead of 'name' */}
+        <Text style={styles.avatarText}>{item.title.charAt(0).toUpperCase()}</Text>
       </View>
       <View style={styles.chatContent}>
         <View style={styles.chatHeader}>
-          <Text style={styles.chatName} numberOfLines={1}>{item.name}</Text>
+          {/* Updated to use 'title' instead of 'name' */}
+          <Text style={styles.chatName} numberOfLines={1}>{item.title}</Text>
           <Text style={styles.chatTime}>{item.timeAgo}</Text>
         </View>
         <Text style={styles.chatPreview} numberOfLines={1}>{item.lastMessage}</Text>
