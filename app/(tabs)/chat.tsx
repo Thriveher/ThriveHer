@@ -1,23 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator, Alert } from 'react-native';
+import { router } from 'expo-router';
 import { ChatHistoryItem, getDetailedChatHistory } from '../api/getchathistory';
 import BottomNavbar from '../components/navbar';
-import { Feather } from '@expo/vector-icons';
-
-type RootStackParamList = {
-  Chat: { id: string; name: string };
-  ChatHistory: undefined;
-  NewChat: undefined;
-};
-
-type ChatHistoryScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'ChatHistory'>;
+import { MaterialIcons } from '@expo/vector-icons';
+import { supabase } from '../../lib/supabase';
+import { createNewChatWithMessage } from '../api/chatapi';
+import { Platform } from 'react-native';
 
 const ChatHistoryScreen = () => {
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const navigation = useNavigation<ChatHistoryScreenNavigationProp>();
+  const [creatingChat, setCreatingChat] = useState<boolean>(false);
 
   useEffect(() => {
     fetchChatHistory();
@@ -36,27 +30,89 @@ const ChatHistoryScreen = () => {
   };
 
   const handleChatPress = (chat: ChatHistoryItem) => {
-    navigation.navigate('Chat', { id: chat.id, name: chat.name });
+    router.push(`/chat/${chat.id}?name=${encodeURIComponent(chat.name)}`);
   };
 
-  const handleNewChat = () => {
-    navigation.navigate('NewChat');
+  const handleNewChat = async () => {
+    try {
+      setCreatingChat(true);
+      
+      // Check if user is authenticated
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) throw sessionError;
+      if (!session) throw new Error('User not authenticated');
+      
+      const userId = session.user.id;
+      const title = 'New Conversation';
+      const initialMessage = 'Hello!';
+      const initialResponse = 'Hi there! How can I help you today?';
+      const initialContext = 'New conversation started.';
+      
+      // Create the new chat
+      const chatId = await createNewChatWithMessage(
+        userId,
+        title,
+        initialMessage,
+        initialResponse,
+        initialContext
+      );
+      
+      // Navigate to the new chat
+      router.push(`/chat/${chatId}?name=${encodeURIComponent(title)}`);
+      
+    } catch (error) {
+      console.error('Failed to create new chat:', error);
+      
+      // Special handling for web platform auth issues
+      if (Platform.OS === 'web' && 
+          error instanceof Error && 
+          error.message.includes('getValueWithKeyAsync is not a function')) {
+        Alert.alert(
+          'Authentication Error',
+          'SecureStore is not supported in web environment. Please use the mobile app or implement a web-specific auth solution.'
+        );
+      } else if (error instanceof Error && error.message === 'User not authenticated') {
+        Alert.alert(
+          'Authentication Required',
+          'Please log in to create a new chat.',
+          [
+            { 
+              text: 'OK', 
+              onPress: () => router.push('/login') 
+            }
+          ]
+        );
+      } else {
+        Alert.alert(
+          'Error',
+          'Failed to create a new chat. Please try again later.'
+        );
+      }
+    } finally {
+      setCreatingChat(false);
+    }
   };
 
   const renderChatItem = ({ item }: { item: ChatHistoryItem }) => (
     <TouchableOpacity
       style={styles.chatCard}
       onPress={() => handleChatPress(item)}
-      activeOpacity={0.7}
+      android_ripple={{ color: 'rgba(73, 101, 78, 0.1)' }}
     >
-      <View style={styles.chatCardContent}>
-        <View style={styles.chatCardHeader}>
+      <View style={styles.avatarContainer}>
+        <Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text>
+      </View>
+      <View style={styles.chatContent}>
+        <View style={styles.chatHeader}>
           <Text style={styles.chatName} numberOfLines={1}>{item.name}</Text>
           <Text style={styles.chatTime}>{item.timeAgo}</Text>
         </View>
         <Text style={styles.chatPreview} numberOfLines={1}>{item.lastMessage}</Text>
-        <View style={styles.chatCardFooter}>
-          <Text style={styles.messageCount}>{item.messageCount} messages</Text>
+        <View style={styles.chipContainer}>
+          <View style={styles.messageCountChip}>
+            <Text style={styles.chipText}>{item.messageCount}</Text>
+          </View>
           <Text style={styles.chatDate}>{item.formattedDate}</Text>
         </View>
       </View>
@@ -65,11 +121,20 @@ const ChatHistoryScreen = () => {
 
   const renderEmptyState = () => (
     <View style={styles.emptyStateContainer}>
-      <Feather name="message-square" size={80} color="#49654E" />
-      <Text style={styles.emptyStateTitle}>No chats yet</Text>
-      <Text style={styles.emptyStateText}>Start a new conversation to begin chatting</Text>
-      <TouchableOpacity style={styles.newChatButton} onPress={handleNewChat}>
-        <Text style={styles.newChatButtonText}>Start New Chat</Text>
+      <MaterialIcons name="chat-bubble-outline" size={64} color="#8BA889" style={styles.emptyIcon} />
+      <Text style={styles.emptyStateTitle}>No conversations yet</Text>
+      <Text style={styles.emptyStateText}>Start chatting to create your first conversation</Text>
+      <TouchableOpacity 
+        style={styles.emptyNewChatButton} 
+        onPress={handleNewChat}
+        disabled={creatingChat}
+        android_ripple={{ color: 'rgba(139, 168, 137, 0.2)', borderless: false }}
+      >
+        {creatingChat ? (
+          <ActivityIndicator size="small" color="#8BA889" />
+        ) : (
+          <Text style={styles.newChatButtonText}>Start New Chat</Text>
+        )}
       </TouchableOpacity>
     </View>
   );
@@ -77,9 +142,18 @@ const ChatHistoryScreen = () => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Chat History</Text>
-        <TouchableOpacity style={styles.newChatButton} onPress={handleNewChat}>
-          <Text style={styles.newChatButtonText}>New Chat</Text>
+        <Text style={styles.headerTitle}>Conversations</Text>
+        <TouchableOpacity 
+          style={styles.fabButton} 
+          onPress={handleNewChat}
+          disabled={creatingChat}
+          android_ripple={{ color: 'rgba(255, 255, 255, 0.2)', borderless: true }}
+        >
+          {creatingChat ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <MaterialIcons name="add" size={24} color="#FFFFFF" />
+          )}
         </TouchableOpacity>
       </View>
 
@@ -106,7 +180,7 @@ const ChatHistoryScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8FAF8',
     position: 'relative',
   },
   header: {
@@ -114,66 +188,103 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 16,
+    paddingTop: 45,
+    paddingBottom: 12,
     backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(37, 53, 40, 0.1)',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#253528',
-  },
-  listContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 80,
-  },
-  chatCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginBottom: 16,
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(139, 168, 137, 0.3)',
+    shadowRadius: 3,
   },
-  chatCardContent: {
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: '#253528',
+    letterSpacing: 0.25,
+  },
+  fabButton: {
+    backgroundColor: '#8BA889',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+  },
+  listContainer: {
+    padding: 12,
+    paddingBottom: 80,
+  },
+  chatCard: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    marginBottom: 12,
     padding: 16,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    alignItems: 'center',
   },
-  chatCardHeader: {
+  avatarContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#8BA889',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  avatarText: {
+    fontSize: 20,
+    fontWeight: '500',
+    color: '#FFFFFF',
+  },
+  chatContent: {
+    flex: 1,
+  },
+  chatHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   chatName: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '500',
     color: '#253528',
     flex: 1,
   },
   chatTime: {
     fontSize: 12,
     color: '#49654E',
-    fontWeight: '500',
+    marginLeft: 8,
   },
   chatPreview: {
     fontSize: 14,
     color: '#49654E',
-    marginBottom: 12,
+    opacity: 0.8,
+    marginBottom: 8,
   },
-  chatCardFooter: {
+  chipContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 8,
   },
-  messageCount: {
+  messageCountChip: {
+    backgroundColor: 'rgba(139, 168, 137, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    marginRight: 8,
+  },
+  chipText: {
     fontSize: 12,
     color: '#49654E',
     fontWeight: '500',
@@ -181,6 +292,7 @@ const styles = StyleSheet.create({
   chatDate: {
     fontSize: 12,
     color: '#49654E',
+    opacity: 0.7,
   },
   emptyStateContainer: {
     flex: 1,
@@ -189,31 +301,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
+  emptyIcon: {
+    marginBottom: 24,
+  },
   emptyStateTitle: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: '500',
     color: '#253528',
-    marginTop: 20,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   emptyStateText: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#49654E',
     textAlign: 'center',
-    marginBottom: 30,
+    marginBottom: 32,
+    opacity: 0.8,
   },
-  newChatButton: {
-    backgroundColor: '#8BA889',
+  emptyNewChatButton: {
+    backgroundColor: 'transparent',
     paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 24,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: '#8BA889',
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
   },
   newChatButtonText: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    fontWeight: '500',
+    color: '#8BA889',
+    letterSpacing: 0.5,
   },
   loadingContainer: {
     flex: 1,
