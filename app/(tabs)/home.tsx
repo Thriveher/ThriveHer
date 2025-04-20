@@ -1,19 +1,14 @@
 import React from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, SafeAreaView } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { useNavigation } from '@react-navigation/native';
 import { learningTopics } from '../data/topics';
 import Navbar from '../components/navbar';
 import { router } from 'expo-router';
 
-
 export default function HomePage() {
-  // Use the correctly typed navigator for React Navigation
-  const navigation = useNavigation<any>();
-
-  // Add proper type for topicId parameter
+  // Handle topic navigation to the skills detail page
   const handleTopicPress = (topicId: string | number) => {
-    // Use router.push with the exact path format
+    // Use the correct format for dynamic routes in Expo Router
     router.push(`/skills/${topicId}`);
   };
 
@@ -61,6 +56,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
+    paddingBottom: 90, // Extra padding to account for navbar
   },
   header: {
     marginBottom: 24,

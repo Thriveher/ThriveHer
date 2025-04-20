@@ -8,12 +8,16 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Image,
-  Dimensions
+  Dimensions,
+  Pressable,
+  Linking
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
+import { useLocalSearchParams, router } from 'expo-router';
 import { getLessonById } from '../data/learn';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
+import { BackHandler } from 'react-native';
 
 // Define types for our data structure
 type InformationCard = {
@@ -52,19 +56,13 @@ type Lesson = {
   cards: LessonCard[];
 }
 
-// Define route param type
-type RouteParams = {
-  Skills: {
-    id: string;
-  }
-}
-
 const { width } = Dimensions.get('window');
 
-export default function LearnScreen() {
-  const route = useRoute<RouteProp<RouteParams, 'Skills'>>();
-  const navigation = useNavigation<any>();
-  const { id } = route.params;
+export default function LessonScreen() {
+  // Use Expo Router's useLocalSearchParams instead of React Navigation's useRoute
+  const params = useLocalSearchParams();
+  const topicId = params.topicId as string;
+  const skillId = params.skillId as string;
   
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [loading, setLoading] = useState(true);
@@ -74,11 +72,25 @@ export default function LearnScreen() {
   const [correctAnswers, setCorrectAnswers] = useState(0);
   const [totalQuestions, setTotalQuestions] = useState(0);
 
+  // Handle hardware back button
+  useFocusEffect(
+    React.useCallback(() => {
+      const onBackPress = () => {
+        // Navigate to the skills screen
+        router.push(`/skills/${skillId}`);
+        return true;
+      };
+
+      const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => subscription.remove();
+    }, [skillId])
+  );
+
   useEffect(() => {
     const fetchLesson = async () => {
       try {
         // Fetch the lesson data for this specific ID
-        const data = await getLessonById(id);
+        const data = await getLessonById(topicId);
         setLesson(data);
         
         // Count total questions for scoring
@@ -93,7 +105,7 @@ export default function LearnScreen() {
     };
 
     fetchLesson();
-  }, [id]);
+  }, [topicId]);
 
   const handleNextCard = () => {
     if (lesson && currentCardIndex < lesson.cards.length - 1) {
@@ -132,23 +144,35 @@ export default function LearnScreen() {
     setCorrectAnswers(0);
   };
 
+  const handleOpenYoutubeVideo = (youtubeId: string) => {
+    const url = `https://www.youtube.com/watch?v=${youtubeId}`;
+    Linking.openURL(url);
+  };
+
   const renderInformationCard = (card: InformationCard) => (
     <View style={styles.cardContainer}>
       <Text style={styles.cardTitle}>{card.title}</Text>
-      <Text style={styles.informationText}>{card.content}</Text>
       
       {card.youtubeId && (
-        <View style={styles.videoContainer}>
+        <TouchableOpacity 
+          style={styles.videoContainer}
+          onPress={() => handleOpenYoutubeVideo(card.youtubeId as string)}
+          activeOpacity={0.9}
+        >
           <Image 
             source={{ uri: `https://img.youtube.com/vi/${card.youtubeId}/hqdefault.jpg` }}
             style={styles.videoThumbnail}
             resizeMode="cover"
           />
           <View style={styles.playButtonOverlay}>
-            <Ionicons name="play-circle" size={50} color="#FFFFFF" />
+            <View style={styles.playButton}>
+              <Ionicons name="play" size={28} color="#FFFFFF" />
+            </View>
           </View>
-        </View>
+        </TouchableOpacity>
       )}
+      
+      <Text style={styles.informationText}>{card.content}</Text>
       
       <TouchableOpacity 
         style={styles.nextButton}
@@ -183,6 +207,7 @@ export default function LearnScreen() {
               ]}
               onPress={() => handleSelectAnswer(option.id)}
               disabled={isAnswerSubmitted}
+              activeOpacity={0.8}
             >
               <Text style={[
                 styles.optionText,
@@ -210,6 +235,7 @@ export default function LearnScreen() {
           style={[styles.submitButton, !selectedAnswer && styles.disabledButton]}
           onPress={handleSubmitAnswer}
           disabled={!selectedAnswer}
+          activeOpacity={0.8}
         >
           <Text style={styles.submitButtonText}>Submit Answer</Text>
         </TouchableOpacity>
@@ -217,6 +243,7 @@ export default function LearnScreen() {
         <TouchableOpacity 
           style={styles.nextButton}
           onPress={handleNextCard}
+          activeOpacity={0.8}
         >
           <Text style={styles.nextButtonText}>Next Question</Text>
           <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
@@ -251,6 +278,7 @@ export default function LearnScreen() {
         <TouchableOpacity 
           style={styles.restartButton}
           onPress={handleRestartLesson}
+          activeOpacity={0.8}
         >
           <Ionicons name="refresh" size={18} color="#49654E" />
           <Text style={styles.restartButtonText}>Restart</Text>
@@ -258,7 +286,8 @@ export default function LearnScreen() {
         
         <TouchableOpacity 
           style={styles.completeButton}
-          onPress={() => navigation.goBack()}
+          onPress={() => router.push(`/skills/${skillId}`)}
+          activeOpacity={0.8}
         >
           <Text style={styles.completeButtonText}>Complete</Text>
           <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
@@ -299,24 +328,21 @@ export default function LearnScreen() {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => navigation.goBack()}
+          onPress={() => router.push(`/skills/${skillId}`)}
+          activeOpacity={0.7}
         >
-          <Ionicons name="chevron-back" size={24} color="#253528" />
-          <Text style={styles.backButtonText}>Back</Text>
+          <Ionicons name="arrow-back" size={24} color="#49654E" />
         </TouchableOpacity>
         <Text style={styles.title}>{lesson?.title || ''}</Text>
-        
-        <View style={styles.progressIndicatorContainer}>
-          {lesson?.cards.map((_, index) => (
-            <View 
-              key={index} 
-              style={[
-                styles.progressDot,
-                currentCardIndex === index && styles.activeProgressDot
-              ]} 
-            />
-          ))}
-        </View>
+      </View>
+      
+      <View style={styles.progressBarContainer}>
+        <View 
+          style={[
+            styles.progressBarFill, 
+            { width: `${((currentCardIndex + 1) / (lesson?.cards.length || 1)) * 100}%` }
+          ]} 
+        />
       </View>
       
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -343,63 +369,49 @@ const styles = StyleSheet.create({
     color: '#49654E',
   },
   header: {
-    padding: 20,
-    paddingBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#E8EFE8',
   },
   backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 2,
-    marginBottom: 8,
-  },
-  backButtonText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#253528',
-    marginLeft: 4,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#253528',
-    marginBottom: 16,
-  },
-  progressIndicatorContainer: {
-    flexDirection: 'row',
+    width: 40,
+    height: 40,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
+    borderRadius: 20,
+    backgroundColor: '#F6F9F6',
   },
-  progressDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  title: {
+    flex: 1,
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#253528',
+    marginLeft: 12,
+  },
+  progressBarContainer: {
+    height: 4,
     backgroundColor: '#E8EFE8',
-    marginHorizontal: 4,
+    width: '100%',
   },
-  activeProgressDot: {
+  progressBarFill: {
+    height: '100%',
     backgroundColor: '#8BA889',
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    borderTopRightRadius: 2,
+    borderBottomRightRadius: 2,
   },
   scrollContent: {
     flexGrow: 1,
-    padding: 20,
+    padding: 16,
     paddingBottom: 40,
   },
   cardContainer: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
+    elevation: 2,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.05)',
     marginBottom: 20,
@@ -409,12 +421,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#253528',
     marginBottom: 16,
-  },
-  informationText: {
-    fontSize: 16,
-    color: '#49654E',
-    lineHeight: 24,
-    marginBottom: 20,
   },
   videoContainer: {
     width: '100%',
@@ -436,28 +442,42 @@ const styles = StyleSheet.create({
     bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.2)',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  playButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  informationText: {
+    fontSize: 16,
+    color: '#49654E',
+    lineHeight: 24,
+    marginBottom: 20,
   },
   nextButton: {
     backgroundColor: '#8BA889',
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     alignSelf: 'flex-end',
+    elevation: 1,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
+    shadowRadius: 2,
   },
   nextButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    marginRight: 8,
+    marginRight: 6,
   },
   questionText: {
     fontSize: 18,
@@ -480,18 +500,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    elevation: 1,
   },
   selectedOption: {
     borderColor: '#8BA889',
     backgroundColor: '#F0F5F0',
   },
   correctOption: {
-    borderColor: '#4CAF50',
-    backgroundColor: '#4CAF50',
+    borderColor: '#8BA889',
+    backgroundColor: '#8BA889',
   },
   incorrectOption: {
-    borderColor: '#F44336',
-    backgroundColor: '#F44336',
+    borderColor: '#C25B5B',
+    backgroundColor: '#C25B5B',
   },
   optionText: {
     fontSize: 16,
@@ -520,14 +541,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     justifyContent: 'center',
     alignItems: 'center',
+    elevation: 1,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
+    shadowRadius: 2,
   },
   disabledButton: {
     backgroundColor: '#D0D0D0',
+    elevation: 0,
     shadowOpacity: 0,
   },
   submitButtonText: {
@@ -610,11 +632,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     flex: 1,
     marginLeft: 10,
+    elevation: 1,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
+    shadowRadius: 2,
   },
   completeButtonText: {
     color: '#FFFFFF',

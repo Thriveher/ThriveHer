@@ -1,12 +1,6 @@
-// app/_layout.tsx
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Stack, Redirect } from 'expo-router';
-
-// This component handles redirecting from /skills to /skills/[name]
-function SkillsRedirect() {
-  return <Redirect href="/skills/default" />;
-}
+import { Stack } from 'expo-router';
 
 export default function Layout() {
   return (
@@ -18,6 +12,7 @@ export default function Layout() {
           animation: 'fade',
         }}
       >
+        <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen 
           name="chat/[id]" 
@@ -35,11 +30,13 @@ export default function Layout() {
             contentStyle: { backgroundColor: 'transparent' }
           }} 
         />
-        {/* Add this to handle the "skills" route with params */}
         <Stack.Screen 
-          name="skills" 
-          options={{ headerShown: false }}
-          component={SkillsRedirect} 
+          name="skills/lesson/[topicId]" 
+          options={{ 
+            headerShown: false,
+            animation: 'slide_from_right',
+            contentStyle: { backgroundColor: 'transparent' }
+          }} 
         />
       </Stack>
     </View>
