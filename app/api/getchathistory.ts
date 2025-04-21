@@ -1,37 +1,37 @@
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../../lib/supabase';
 import { format, formatDistanceToNow } from 'date-fns';
 
 // Types
 export interface ChatHistoryItem {
   id: string;
-  title: string;  // Changed from 'name' to match your table structure
-  created_at: string;  // Changed from camelCase to snake_case to match table
-  updated_at: string;  // Changed from camelCase to snake_case to match table
-  messageCount?: number;
-  lastMessage?: string;
-  formattedDate?: string;
-  timeAgo?: string;
+  title: string;
+  emoji: string;  // Added emoji field
+  created_at: string;
+  updated_at: string;
+  messageCount: number;
+  lastMessage: string;
+  formattedDate: string;
+  timeAgo: string;
+  createdAt?: string;  // For compatibility with the updated interface
+  updatedAt?: string;  // For compatibility with the updated interface
 }
-
-// Initialize Supabase client using environment variables
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 /**
  * Fetches all chat histories with title and timestamp information
  * @returns Array of chat history items
  */
-export const getChatHistory = async (): Promise<ChatHistoryItem[]> => {
+export const getChatHistory = async (userId: string): Promise<ChatHistoryItem[]> => {
   try {
     const { data, error } = await supabase
       .from('chats')
       .select(`
         id,
         title,
+        emoji,
         created_at,
         updated_at
       `)
+      .eq('user_id', userId)  // Filter by userId
       .order('updated_at', { ascending: false });
     
     if (error) throw error;
@@ -43,8 +43,13 @@ export const getChatHistory = async (): Promise<ChatHistoryItem[]> => {
       
       return {
         ...chat,
+        emoji: chat.emoji || '💬',  // Use default emoji if none is set
+        messageCount: 0,
+        lastMessage: 'No messages yet',
         formattedDate: format(updatedDate, 'MMM d, yyyy h:mm a'),
-        timeAgo: formatDistanceToNow(updatedDate, { addSuffix: true })
+        timeAgo: formatDistanceToNow(updatedDate, { addSuffix: true }),
+        createdAt: chat.created_at,
+        updatedAt: chat.updated_at
       };
     });
     
@@ -57,70 +62,92 @@ export const getChatHistory = async (): Promise<ChatHistoryItem[]> => {
 
 /**
  * Fetches chat history with additional message details
+ * @param userId The ID of the user whose chats to fetch
  * @returns Array of chat history items with message counts and last message
  */
-export const getDetailedChatHistory = async (): Promise<ChatHistoryItem[]> => {
+export const getDetailedChatHistory = async (userId: string): Promise<ChatHistoryItem[]> => {
   try {
-    // First get basic chat history
-    const chatHistory = await getChatHistory();
+    // Get all chats for the current user, including the emoji field
+    const { data: chats, error: chatsError } = await supabase
+      .from('chats')
+      .select('id, title, emoji, created_at, updated_at')
+      .eq('user_id', userId)  // Filter by userId
+      .order('updated_at', { ascending: false });
     
-    // For each chat, get message count and last message
-    const detailedHistory = await Promise.all(
-      chatHistory.map(async (chat) => {
-        // Get message count
-        const { count, error: countError } = await supabase
-          .from('messages')
-          .select('*', { count: 'exact', head: true })
-          .eq('chat_id', chat.id);
-        
-        if (countError) throw countError;
-        
-        // Get last message
-        const { data: messages, error: msgError } = await supabase
-          .from('messages')
-          .select('content, is_user_message')  // Changed from 'role' to 'is_user_message'
-          .eq('chat_id', chat.id)
-          .order('timestamp', { ascending: false })  // Changed from 'createdAt' to 'timestamp'
-          .limit(1);
-        
-        if (msgError) throw msgError;
-        
-        // Format last message preview (truncate if needed)
-        const lastMessage = messages && messages.length > 0 
-          ? `${messages[0].is_user_message ? 'You: ' : 'AI: '}${truncateText(messages[0].content, 50)}`
-          : 'No messages yet';
-        
-        return {
-          ...chat,
-          messageCount: count || 0,
-          lastMessage
-        };
-      })
-    );
+    if (chatsError) throw chatsError;
+    if (!chats || chats.length === 0) return [];
     
-    return detailedHistory;
+    // Process each chat to get message counts and last message
+    const detailedChats = await Promise.all(chats.map(async (chat) => {
+      // Get message count
+      const { count: messageCount, error: countError } = await supabase
+        .from('messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('chat_id', chat.id);
+      
+      if (countError) throw countError;
+      
+      // Get last message
+      const { data: messages, error: messagesError } = await supabase
+        .from('messages')
+        .select('content, is_user_message, timestamp')
+        .eq('chat_id', chat.id)
+        .order('timestamp', { ascending: false })
+        .limit(1);
+      
+      if (messagesError) throw messagesError;
+      
+      const lastMessage = messages && messages.length > 0 
+        ? messages[0].content 
+        : 'No messages yet';
+        
+      // Format dates
+      const updatedAt = new Date(chat.updated_at);
+      const formattedDate = format(updatedAt, 'MMM d');
+      const timeAgo = formatDistanceToNow(updatedAt, { addSuffix: true });
+      
+      return {
+        id: chat.id,
+        title: chat.title,
+        emoji: chat.emoji || '💬',  // Use default emoji if none is set
+        created_at: chat.created_at,
+        updated_at: chat.updated_at,
+        lastMessage: truncateText(lastMessage, 50),
+        messageCount: messageCount || 0,
+        timeAgo,
+        formattedDate,
+        createdAt: chat.created_at,
+        updatedAt: chat.updated_at
+      };
+    }));
+    
+    return detailedChats;
+    
   } catch (error) {
     console.error('Error fetching detailed chat history:', error);
-    return chatHistory; // Return basic history if detailed fetch fails
+    throw error;
   }
 };
 
 /**
  * Searches chat history by title
+ * @param userId User ID to filter chats
  * @param searchTerm Term to search for in chat titles
  * @returns Filtered array of chat history items
  */
-export const searchChatHistory = async (searchTerm: string): Promise<ChatHistoryItem[]> => {
+export const searchChatHistory = async (userId: string, searchTerm: string): Promise<ChatHistoryItem[]> => {
   try {
     const { data, error } = await supabase
       .from('chats')
       .select(`
         id,
         title,
+        emoji,
         created_at,
         updated_at
       `)
-      .ilike('title', `%${searchTerm}%`)  // Changed from 'name' to 'title'
+      .eq('user_id', userId)
+      .ilike('title', `%${searchTerm}%`)
       .order('updated_at', { ascending: false });
     
     if (error) throw error;
@@ -131,8 +158,13 @@ export const searchChatHistory = async (searchTerm: string): Promise<ChatHistory
       
       return {
         ...chat,
+        emoji: chat.emoji || '💬',
+        messageCount: 0,
+        lastMessage: '',
         formattedDate: format(updatedDate, 'MMM d, yyyy h:mm a'),
-        timeAgo: formatDistanceToNow(updatedDate, { addSuffix: true })
+        timeAgo: formatDistanceToNow(updatedDate, { addSuffix: true }),
+        createdAt: chat.created_at,
+        updatedAt: chat.updated_at
       };
     });
     
@@ -145,19 +177,22 @@ export const searchChatHistory = async (searchTerm: string): Promise<ChatHistory
 
 /**
  * Fetches recent chats (limited number)
+ * @param userId User ID to filter chats
  * @param limit Maximum number of chats to return
  * @returns Array of recent chat history items
  */
-export const getRecentChats = async (limit: number = 5): Promise<ChatHistoryItem[]> => {
+export const getRecentChats = async (userId: string, limit: number = 5): Promise<ChatHistoryItem[]> => {
   try {
     const { data, error } = await supabase
       .from('chats')
       .select(`
         id,
         title,
+        emoji,
         created_at,
         updated_at
       `)
+      .eq('user_id', userId)
       .order('updated_at', { ascending: false })
       .limit(limit);
     
@@ -169,8 +204,13 @@ export const getRecentChats = async (limit: number = 5): Promise<ChatHistoryItem
       
       return {
         ...chat,
+        emoji: chat.emoji || '💬',
+        messageCount: 0,
+        lastMessage: '',
         formattedDate: format(updatedDate, 'MMM d, yyyy h:mm a'),
-        timeAgo: formatDistanceToNow(updatedDate, { addSuffix: true })
+        timeAgo: formatDistanceToNow(updatedDate, { addSuffix: true }),
+        createdAt: chat.created_at,
+        updatedAt: chat.updated_at
       };
     });
     
@@ -183,10 +223,11 @@ export const getRecentChats = async (limit: number = 5): Promise<ChatHistoryItem
 
 /**
  * Fetches chats created within a specific time period
+ * @param userId User ID to filter chats
  * @param days Number of days to look back
  * @returns Array of chat history items from the specified period
  */
-export const getChatsFromPeriod = async (days: number = 7): Promise<ChatHistoryItem[]> => {
+export const getChatsFromPeriod = async (userId: string, days: number = 7): Promise<ChatHistoryItem[]> => {
   try {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
@@ -197,10 +238,12 @@ export const getChatsFromPeriod = async (days: number = 7): Promise<ChatHistoryI
       .select(`
         id,
         title,
+        emoji,
         created_at,
         updated_at
       `)
-      .gte('created_at', startDateIso)  // Changed from 'createdAt' to 'created_at'
+      .eq('user_id', userId)
+      .gte('created_at', startDateIso)
       .order('updated_at', { ascending: false });
     
     if (error) throw error;
@@ -211,8 +254,13 @@ export const getChatsFromPeriod = async (days: number = 7): Promise<ChatHistoryI
       
       return {
         ...chat,
+        emoji: chat.emoji || '💬',
+        messageCount: 0,
+        lastMessage: '',
         formattedDate: format(updatedDate, 'MMM d, yyyy h:mm a'),
-        timeAgo: formatDistanceToNow(updatedDate, { addSuffix: true })
+        timeAgo: formatDistanceToNow(updatedDate, { addSuffix: true }),
+        createdAt: chat.created_at,
+        updatedAt: chat.updated_at
       };
     });
     
@@ -225,11 +273,12 @@ export const getChatsFromPeriod = async (days: number = 7): Promise<ChatHistoryI
 
 /**
  * Groups chat history by date
+ * @param userId User ID to filter chats
  * @returns Object with chats grouped by date
  */
-export const getChatHistoryByDate = async (): Promise<Record<string, ChatHistoryItem[]>> => {
+export const getChatHistoryByDate = async (userId: string): Promise<Record<string, ChatHistoryItem[]>> => {
   try {
-    const chatHistory = await getChatHistory();
+    const chatHistory = await getChatHistory(userId);
     
     // Group chats by date
     const groupedChats = chatHistory.reduce((groups, chat) => {

@@ -16,7 +16,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.omsandeeppatil.thriveher"
+      "package": "com.durvadongre.thriveher"
     },
     "web": {
       "bundler": "metro",

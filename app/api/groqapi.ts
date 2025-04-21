@@ -8,6 +8,7 @@ interface GroqRequest {
   userId: string;
   chatName?: string; // Optional for new chats
   context?: string; // Optional for new chats
+  emoji?: string; // Optional emoji
 }
 
 interface GroqResponse {
@@ -15,6 +16,7 @@ interface GroqResponse {
   updatedContext: string;
   chatId: string;
   chatName: string;
+  emoji: string;
   timestamp: string;
 }
 
@@ -26,7 +28,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 export const processWithGroq = async (request: GroqRequest): Promise<GroqResponse> => {
   try {
     const { message, userId } = request;
-    let { chatId, chatName, context } = request;
+    let { chatId, chatName, context, emoji } = request;
     const timestamp = new Date().toISOString();
     
     // Get API key
@@ -36,57 +38,70 @@ export const processWithGroq = async (request: GroqRequest): Promise<GroqRespons
       throw new Error("GROQ API key is missing");
     }
     
-    // Create a new chat if chatId is not provided
-    if (!chatId) {
-      // Generate a default chat name based on first message
-      const defaultChatName = message.length > 30 
-        ? `${message.substring(0, 30)}...` 
-        : message;
-      
-      // Create new chat in Supabase
-      const { data, error } = await supabase.rpc('create_chat_with_messages', {
-        user_id: userId,
-        title: chatName || defaultChatName,
-        user_message: message,
-        bot_response: '', // Will update after getting Groq response
-        context: context || '' 
-      });
-      
-      if (error) throw new Error(`Failed to create chat: ${error.message}`);
-      
-      chatId = data;
-      chatName = chatName || defaultChatName;
-      context = context || '';
-    } else {
+    // For existing chats, fetch full information
+    if (chatId) {
       // Fetch existing context if not provided but chatId exists
       if (!context) {
-        const { data, error } = await supabase
+        const { data: contextData, error: contextError } = await supabase
           .from('chat_contexts')
           .select('context')
           .eq('chat_id', chatId)
           .single();
           
-        if (!error && data) {
-          context = data.context;
+        if (!contextError && contextData) {
+          context = contextData.context;
         } else {
           context = '';
         }
       }
       
-      // Fetch chat name if not provided
-      if (!chatName) {
-        const { data, error } = await supabase
-          .from('chats')
-          .select('title')
-          .eq('id', chatId)
-          .single();
-          
-        if (!error && data) {
-          chatName = data.title;
-        } else {
-          chatName = 'Ongoing Conversation';
+      // Fetch chat details if not provided
+      const { data: chatData, error: chatError } = await supabase
+        .from('chats')
+        .select('title, emoji')
+        .eq('id', chatId)
+        .single();
+        
+      if (!chatError && chatData) {
+        chatName = chatName || chatData.title;
+        emoji = emoji || chatData.emoji;
+      } else {
+        chatName = chatName || 'Ongoing Conversation';
+        emoji = emoji || '💬';
+      }
+      
+      // Fetch recent message history to enhance context
+      const { data: recentMessages, error: messagesError } = await supabase
+        .from('messages')
+        .select('is_user_message, content')
+        .eq('chat_id', chatId)
+        .order('timestamp', { ascending: false })
+        .limit(10);
+        
+      if (!messagesError && recentMessages) {
+        // Create a context summary from recent messages if we have a limited context
+        if (!context || context.length < 1000) {
+          const recentExchanges = recentMessages
+            .reverse()
+            .map(msg => `${msg.is_user_message ? 'User' : 'Assistant'}: ${msg.content}`)
+            .join('\n');
+            
+          // Append recent exchanges to existing context or create new context
+          context = context 
+            ? `${context}\n\nRecent conversation:\n${recentExchanges}` 
+            : `Conversation history:\n${recentExchanges}`;
         }
       }
+    } else {
+      // Create a new chat if chatId is not provided
+      // Generate a default chat name based on first message
+      const defaultChatName = message.length > 30 
+        ? `${message.substring(0, 30)}...` 
+        : message;
+      
+      chatName = chatName || defaultChatName;
+      emoji = emoji || '💬'; // Default emoji
+      context = context || '';
     }
     
     // Construct the system prompt for Groq
@@ -94,15 +109,29 @@ export const processWithGroq = async (request: GroqRequest): Promise<GroqRespons
     Your response must be in valid JSON format with the following structure:
     {
       "response": "Your helpful response here",
-      "context": "Updated conversation context for future reference",
+      "context": "Detailed conversation context that captures key information, emotions, topics discussed, and important details for future reference",
       "chatName": "Suggested name for this conversation based on content",
+      "emoji": "A single aesthetic emoji that represents the main theme of this conversation",
       "timestamp": "${timestamp}"
     }
     
     Current chat name: "${chatName}"
+    Current emoji: "${emoji || '💬'}"
+    
+    CONTEXT INSTRUCTIONS:
+    - The context should be comprehensive yet concise
+    - Include key topics, user preferences, important details, and emotional states
+    - Structure the context to help you better understand the user in future interactions
+    - Update the context by building on previous context, not replacing it entirely
+    
+    EMOJI INSTRUCTIONS:
+    - Choose ONE aesthetic emoji that best represents the conversation theme
+    - The emoji should be visually appealing and relevant to the discussion
+    - Avoid generic emojis unless truly appropriate
+    
     Previous context: ${context || "No previous context available."}
     
-    Keep your responses concise, friendly, and helpful. The context field should summarize key points from the conversation that will be useful for future reference.`;
+    Keep your responses concise, friendly, and helpful.`;
 
     // Make the request to Groq
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -118,7 +147,7 @@ export const processWithGroq = async (request: GroqRequest): Promise<GroqRespons
           { role: "user", content: message }
         ],
         temperature: 0.7,
-        max_tokens: 800,
+        max_tokens: 1000,
         response_format: { type: "json_object" }
       })
     });
@@ -141,30 +170,44 @@ export const processWithGroq = async (request: GroqRequest): Promise<GroqRespons
         response: data.choices[0].message.content,
         context: context,
         chatName: chatName,
+        emoji: emoji || '💬',
         timestamp: timestamp
       };
     }
     
-    // Update database with the bot response and context
-    if (parsedResponse.response) {
-      // If this was a new chat, update the bot_response
-      if (!request.chatId) {
-        await supabase
-          .from('messages')
-          .update({ content: parsedResponse.response })
-          .eq('chat_id', chatId)
-          .eq('is_user_message', false);
-      } else {
-        // Add message pair for existing chat
-        await supabase.rpc('add_message_pair', {
-          chat_id: chatId,
+    // Extract values from parsed response with fallbacks
+    const botResponse = parsedResponse.response || "Sorry, I couldn't process that request.";
+    const updatedContext = parsedResponse.context || context || "";
+    const updatedChatName = parsedResponse.chatName || chatName;
+    const updatedEmoji = parsedResponse.emoji || emoji || '💬';
+    
+    // Handle database operations based on whether this is a new or existing chat
+    if (!chatId) {
+      // Create new chat with all information
+      const { data: newChatId, error: createError } = await supabase.rpc(
+        'create_chat_with_messages',
+        {
+          user_id: userId,
+          title: updatedChatName,
           user_message: message,
-          bot_response: parsedResponse.response
-        });
-      }
+          bot_response: botResponse,
+          context: updatedContext,
+          p_emoji: updatedEmoji // New parameter for emoji
+        }
+      );
       
-      // Update context
-      const updatedContext = parsedResponse.context || context;
+      if (createError) throw new Error(`Failed to create chat: ${createError.message}`);
+      chatId = newChatId;
+      
+    } else {
+      // Add message pair for existing chat
+      await supabase.rpc('add_message_pair', {
+        chat_id: chatId,
+        user_message: message,
+        bot_response: botResponse
+      });
+      
+      // Update context with enhanced information
       await supabase
         .from('chat_contexts')
         .upsert({
@@ -173,37 +216,32 @@ export const processWithGroq = async (request: GroqRequest): Promise<GroqRespons
           timestamp: timestamp
         });
       
-      // Update chat name if suggested
-      if (parsedResponse.chatName && parsedResponse.chatName !== chatName) {
-        await supabase
-          .from('chats')
-          .update({ 
-            title: parsedResponse.chatName,
-            updated_at: timestamp
-          })
-          .eq('id', chatId);
-        
-        chatName = parsedResponse.chatName;
-      } else {
-        // Just update the timestamp
-        await supabase
-          .from('chats')
-          .update({ updated_at: timestamp })
-          .eq('id', chatId);
-      }
+      // Update chat details if they've changed
+      await supabase
+        .from('chats')
+        .update({ 
+          title: updatedChatName,
+          emoji: updatedEmoji,
+          updated_at: timestamp
+        })
+        .eq('id', chatId);
     }
     
-    // Return the formatted response
+    // Return the complete formatted response
     return {
-      botResponse: parsedResponse.response || "Sorry, I couldn't process that request.",
-      updatedContext: parsedResponse.context || context,
-      chatId: chatId,
-      chatName: parsedResponse.chatName || chatName,
-      timestamp: timestamp
+      botResponse,
+      updatedContext,
+      chatId,
+      chatName: updatedChatName,
+      emoji: updatedEmoji,
+      timestamp
     };
     
   } catch (error) {
     console.error('Error in processWithGroq:', error);
+    // Provide default values for error case
+    const errorEmoji = '⚠️';
+    
     // If we have a chatId, still try to save the error message
     if (request.chatId) {
       try {
@@ -222,6 +260,7 @@ export const processWithGroq = async (request: GroqRequest): Promise<GroqRespons
       updatedContext: request.context || "",
       chatId: request.chatId || uuidv4(), // Generate a temporary ID if none exists
       chatName: request.chatName || "Error Conversation",
+      emoji: request.emoji || errorEmoji,
       timestamp: new Date().toISOString()
     };
   }
@@ -236,5 +275,17 @@ export const getChatHistory = async (chatId: string) => {
     .order('timestamp', { ascending: true });
     
   if (error) throw new Error(`Failed to get chat history: ${error.message}`);
+  return data;
+};
+
+// Helper function to get chat details including emoji
+export const getChatDetails = async (chatId: string) => {
+  const { data, error } = await supabase
+    .from('chats')
+    .select('title, emoji, created_at, updated_at')
+    .eq('id', chatId)
+    .single();
+    
+  if (error) throw new Error(`Failed to get chat details: ${error.message}`);
   return data;
 };

@@ -12,51 +12,90 @@ const ChatHistoryScreen = () => {
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [creatingChat, setCreatingChat] = useState<boolean>(false);
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchChatHistory();
+    // Check authentication and get userId on component mount
+    checkAuth();
   }, []);
 
+  useEffect(() => {
+    // Only fetch chat history if we have a userId
+    if (userId) {
+      fetchChatHistory();
+    }
+  }, [userId]);
+
+  const checkAuth = async () => {
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      if (error) {
+        console.error('Authentication error:', error);
+        return;
+      }
+
+      if (!session) {
+        Alert.alert(
+          'Authentication Required',
+          'Please log in to view your conversations.',
+          [{ text: 'OK', onPress: () => router.push('/login') }]
+        );
+        return;
+      }
+
+      setUserId(session.user.id);
+    } catch (error) {
+      console.error('Failed to check authentication status:', error);
+    }
+  };
+
   const fetchChatHistory = async () => {
+    if (!userId) return;
+
     try {
       setLoading(true);
-      const history = await getDetailedChatHistory();
+      const history = await getDetailedChatHistory(userId);
       setChatHistory(history);
     } catch (error) {
       console.error('Failed to fetch chat history:', error);
+      Alert.alert('Error', 'Failed to load your conversations. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleChatPress = (chat: ChatHistoryItem) => {
-    // Updated to use 'title' instead of 'name'
     router.push(`/chat/${chat.id}?name=${encodeURIComponent(chat.title)}`);
   };
 
   const handleNewChat = async () => {
     try {
+      if (!userId) {
+        Alert.alert(
+          'Authentication Required',
+          'Please log in to create a new conversation.',
+          [{ text: 'OK', onPress: () => router.push('/login') }]
+        );
+        return;
+      }
+
       setCreatingChat(true);
       
-      // Check if user is authenticated
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) throw sessionError;
-      if (!session) throw new Error('User not authenticated');
-      
-      const userId = session.user.id;
       const title = 'New Conversation';
       const initialMessage = 'Hello!';
       const initialResponse = 'Hi there! How can I help you today?';
       const initialContext = 'New conversation started.';
+      const initialEmoji = '💬';
       
-      // Create the new chat
+      // Create the new chat with emoji
       const chatId = await createNewChatWithMessage(
         userId,
         title,
         initialMessage,
         initialResponse,
-        initialContext
+        initialContext,
+        initialEmoji
       );
       
       // Navigate to the new chat
@@ -72,17 +111,6 @@ const ChatHistoryScreen = () => {
         Alert.alert(
           'Authentication Error',
           'SecureStore is not supported in web environment. Please use the mobile app or implement a web-specific auth solution.'
-        );
-      } else if (error instanceof Error && error.message === 'User not authenticated') {
-        Alert.alert(
-          'Authentication Required',
-          'Please log in to create a new chat.',
-          [
-            { 
-              text: 'OK', 
-              onPress: () => router.push('/login') 
-            }
-          ]
         );
       } else {
         Alert.alert(
@@ -102,12 +130,12 @@ const ChatHistoryScreen = () => {
       android_ripple={{ color: 'rgba(73, 101, 78, 0.1)' }}
     >
       <View style={styles.avatarContainer}>
-        {/* Updated to use 'title' instead of 'name' */}
-        <Text style={styles.avatarText}>{item.title.charAt(0).toUpperCase()}</Text>
+        <Text style={styles.emojiAvatar}>
+          {item.emoji || '💬'}
+        </Text>
       </View>
       <View style={styles.chatContent}>
         <View style={styles.chatHeader}>
-          {/* Updated to use 'title' instead of 'name' */}
           <Text style={styles.chatName} numberOfLines={1}>{item.title}</Text>
           <Text style={styles.chatTime}>{item.timeAgo}</Text>
         </View>
@@ -142,6 +170,21 @@ const ChatHistoryScreen = () => {
     </View>
   );
 
+  const renderUnauthenticated = () => (
+    <View style={styles.emptyStateContainer}>
+      <MaterialIcons name="lock-outline" size={64} color="#8BA889" style={styles.emptyIcon} />
+      <Text style={styles.emptyStateTitle}>Authentication Required</Text>
+      <Text style={styles.emptyStateText}>Please log in to view your conversations</Text>
+      <TouchableOpacity 
+        style={styles.emptyNewChatButton} 
+        onPress={() => router.push('/login')}
+        android_ripple={{ color: 'rgba(139, 168, 137, 0.2)', borderless: false }}
+      >
+        <Text style={styles.newChatButtonText}>Log In</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -149,7 +192,7 @@ const ChatHistoryScreen = () => {
         <TouchableOpacity 
           style={styles.fabButton} 
           onPress={handleNewChat}
-          disabled={creatingChat}
+          disabled={creatingChat || !userId}
           android_ripple={{ color: 'rgba(255, 255, 255, 0.2)', borderless: true }}
         >
           {creatingChat ? (
@@ -164,6 +207,8 @@ const ChatHistoryScreen = () => {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#49654E" />
         </View>
+      ) : !userId ? (
+        renderUnauthenticated()
       ) : (
         <FlatList
           data={chatHistory}
@@ -172,6 +217,8 @@ const ChatHistoryScreen = () => {
           contentContainerStyle={styles.listContainer}
           ListEmptyComponent={renderEmptyState}
           showsVerticalScrollIndicator={false}
+          refreshing={loading}
+          onRefresh={fetchChatHistory}
         />
       )}
 
@@ -222,6 +269,7 @@ const styles = StyleSheet.create({
   listContainer: {
     padding: 12,
     paddingBottom: 80,
+    flexGrow: 1,
   },
   chatCard: {
     flexDirection: 'row',
@@ -240,15 +288,13 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#8BA889',
+    backgroundColor: 'rgba(139, 168, 137, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
   },
-  avatarText: {
-    fontSize: 20,
-    fontWeight: '500',
-    color: '#FFFFFF',
+  emojiAvatar: {
+    fontSize: 24,
   },
   chatContent: {
     flex: 1,

@@ -14,21 +14,21 @@ export const fetchChatMessages = async (chatId: string): Promise<ChatData> => {
       .select('*')
       .eq('chat_id', chatId)
       .order('timestamp', { ascending: true });
-
+    
     if (messagesError) throw messagesError;
-
+    
     // Fetch context for the chat
     const { data: contextData, error: contextError } = await supabase
       .from('chat_contexts')
       .select('context')
       .eq('chat_id', chatId)
       .single();
-
+    
     if (contextError && contextError.code !== 'PGRST116') {
       // PGRST116 is the error code for "no rows returned" which is fine
       throw contextError;
     }
-
+    
     return {
       messages: messagesData,
       context: contextData?.context || null,
@@ -47,7 +47,6 @@ export const sendMessage = async (
 ): Promise<void> => {
   try {
     // Call the stored procedure to add message pair with corrected parameter order
-    // Based on the error hint: public.add_message_pair(p_bot_response, p_chat_id, p_user_message)
     const { error } = await supabase.rpc('add_message_pair', {
       p_bot_response: botResponse,
       p_chat_id: chatId,
@@ -55,7 +54,7 @@ export const sendMessage = async (
     });
     
     if (error) throw error;
-
+    
     // Update the context
     const { error: contextError } = await supabase
       .from('chat_contexts')
@@ -80,16 +79,17 @@ export const createNewChatWithMessage = async (
   title: string,
   userMessage: string,
   botResponse: string,
-  context: string
+  context: string,
+  emoji: string = '💬'  // Added emoji parameter with default value
 ): Promise<string> => {
   try {
-    // Fixed the function name to create_chat_with_messages (plural) as indicated by the error hint
     const { data, error } = await supabase.rpc('create_chat_with_messages', {
       p_user_id: userId,
       p_title: title,
       p_user_message: userMessage,
       p_bot_response: botResponse,
-      p_context: context
+      p_context: context,
+      p_emoji: emoji  // Pass emoji to the stored procedure
     });
     
     if (error) {
