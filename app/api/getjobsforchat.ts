@@ -1,6 +1,3 @@
-// jobSearchApi.ts
-
-import { createClient } from '@supabase/supabase-js';
 import Groq from 'groq-sdk';
 
 // Define TypeScript interfaces for the API response
@@ -72,13 +69,8 @@ const API_BASE_URL = 'https://jsearch.p.rapidapi.com';
 const API_KEY = process.env.EXPO_PUBLIC_RAPIDAPI_KEY || ''; // Fallback to provided key for testing
 const API_HOST = 'jsearch.p.rapidapi.com';
 
-// Supabase and Groq configuration
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-const SUPABASE_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+// Groq configuration
 const GROQ_API_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY || '';
-
-// Initialize Supabase client
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Initialize Groq client with dangerouslyAllowBrowser option
 const groqClient = new Groq({ 
@@ -112,11 +104,6 @@ const validateApiKeys = (): boolean => {
     isValid = false;
   }
   
-  if (!SUPABASE_URL || !SUPABASE_KEY) {
-    console.error('Supabase credentials are not configured');
-    isValid = false;
-  }
-  
   if (!GROQ_API_KEY) {
     console.error('Groq API key is not configured');
     isValid = false;
@@ -143,7 +130,6 @@ const processJobWithLLM = async (job: JobData, query: string): Promise<Processed
     Salary: ${job.job_salary_min ? `${job.job_salary_min}-${job.job_salary_max} ${job.job_salary_currency} ${job.job_salary_period || ''}` : 'Not specified'}
     Search Query: ${query}
     `;
-
     // Ask LLM to extract structured data
     const response = await groqClient.chat.completions.create({
       model: "llama3-70b-8192",
@@ -171,7 +157,6 @@ const processJobWithLLM = async (job: JobData, query: string): Promise<Processed
       temperature: 0.1,
       max_tokens: 1000
     });
-
     // Parse LLM response
     const content = response.choices[0]?.message?.content || '{}';
     // Extract JSON from content (in case it's wrapped in markdown code blocks)
@@ -182,7 +167,6 @@ const processJobWithLLM = async (job: JobData, query: string): Promise<Processed
     if (jsonContent.includes('}{')) {
       jsonContent = jsonContent.split('}{')[0] + '}';
     }
-
     try {
       const processedData = JSON.parse(jsonContent);
       
@@ -230,111 +214,6 @@ const processJobWithLLM = async (job: JobData, query: string): Promise<Processed
       created_at: new Date().toISOString(),
       query_text: query
     };
-  }
-};
-
-/**
- * Search for jobs in Supabase database using text search
- * @param query The search query
- * @returns Promise with job search results from the database
- */
-const searchJobsInDatabase = async (query: string): Promise<JobData[]> => {
-  try {
-    // Generate search terms from the query
-    const searchTerms = query.toLowerCase().split(/\s+/);
-    
-    // First try exact match on query_text
-    let { data: exactMatches, error: exactError } = await supabase
-      .from('job_vectors')
-      .select('*')
-      .ilike('query_text', `%${query}%`)
-      .order('query_relevance', { ascending: false })
-      .limit(20);
-    
-    if (exactError) {
-      console.error('Error searching jobs in database (exact):', exactError);
-      exactMatches = [];
-    }
-    
-    // If we found enough exact matches, return them
-    if (exactMatches && exactMatches.length >= 10) {
-      return exactMatches;
-    }
-    
-    // Otherwise search by job title and keywords
-    const { data: titleMatches, error: titleError } = await supabase
-      .from('job_vectors')
-      .select('*')
-      .or(`job_title.ilike.%${query}%,employer_name.ilike.%${query}%`)
-      .order('query_relevance', { ascending: false })
-      .limit(20);
-    
-    if (titleError) {
-      console.error('Error searching jobs in database (title):', titleError);
-      return exactMatches || [];
-    }
-    
-    // Combine results, remove duplicates
-    const combinedResults = [...(exactMatches || [])];
-    titleMatches?.forEach(job => {
-      if (!combinedResults.some(existing => existing.job_id === job.job_id)) {
-        combinedResults.push(job);
-      }
-    });
-    
-    // If we still need more results, try search terms
-    if (combinedResults.length < 10) {
-      // Try full text search on search terms array
-      const { data: termMatches, error: termError } = await supabase
-        .from('job_vectors')
-        .select('*')
-        .contains('search_terms', searchTerms)
-        .order('query_relevance', { ascending: false })
-        .limit(20);
-      
-      if (!termError && termMatches) {
-        termMatches.forEach(job => {
-          if (!combinedResults.some(existing => existing.job_id === job.job_id)) {
-            combinedResults.push(job);
-          }
-        });
-      }
-    }
-    
-    return combinedResults;
-  } catch (error) {
-    console.error('Error searching in database:', error);
-    return [];
-  }
-};
-
-/**
- * Save job data to Supabase with LLM processed information
- * @param jobs Array of job data
- * @param query Original search query
- */
-const saveJobsToDatabase = async (jobs: JobData[], query: string): Promise<void> => {
-  try {
-    // Process each job with LLM to extract structured data
-    const processedJobs = await Promise.all(
-      jobs.map(job => processJobWithLLM(job, query))
-    );
-    
-    // Insert processed jobs to Supabase
-    const { error } = await supabase
-      .from('job_vectors')
-      .upsert(processedJobs, { 
-        onConflict: 'job_id',
-        ignoreDuplicates: false 
-      });
-    
-    if (error) {
-      console.error('Error saving jobs to database:', error);
-    } else {
-      console.log(`Successfully saved ${jobs.length} jobs to database`);
-    }
-  } catch (error) {
-    console.error('Error in saveJobsToDatabase:', error);
   }
 };
 
@@ -401,6 +280,55 @@ const buildUrl = (endpoint: string, params: Record<string, string | number | und
 };
 
 /**
+ * Fetch employer logo from API when it's not available
+ * @param employerName - The name of the employer to search for
+ * @returns URL to the employer logo or null
+ */
+const fetchEmployerLogo = async (employerName: string): Promise<string | null> => {
+  try {
+    // Use a search API to find the company logo
+    const searchUrl = `https://autocomplete.clearbit.com/v1/companies/suggest?query=${encodeURIComponent(employerName)}`;
+    
+    const response = await fetch(searchUrl);
+    
+    if (!response.ok) {
+      console.error(`Error fetching logo for ${employerName}: ${response.statusText}`);
+      return null;
+    }
+    
+    const data = await response.json();
+    
+    // Return the logo URL if available
+    if (data && data.length > 0 && data[0].logo) {
+      return data[0].logo;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error(`Error fetching logo for ${employerName}:`, error);
+    return null;
+  }
+};
+
+/**
+ * Enhance job data with additional information including logos
+ * @param jobs - Array of job data to enhance
+ * @returns Enhanced job data with logos
+ */
+const enhanceJobData = async (jobs: JobData[]): Promise<JobData[]> => {
+  const enhancedJobs = await Promise.all(jobs.map(async (job) => {
+    // If employer logo is missing, try to fetch it
+    if (!job.employer_logo) {
+      job.employer_logo = await fetchEmployerLogo(job.employer_name);
+    }
+    
+    return job;
+  }));
+  
+  return enhancedJobs;
+};
+
+/**
  * Fetch jobs from API
  * @param searchParams - Parameters for the job search query
  * @returns Promise with job search results
@@ -414,10 +342,10 @@ const fetchJobsFromApi = async (searchParams: JobSearchParams): Promise<JobSearc
     date_posted: searchParams.datePosted || 'all',
     language: searchParams.language || 'en'
   };
-
+  
   const url = buildUrl('/search', params);
   const options = getRequestOptions();
-
+  
   try {
     const response = await fetch(url, options);
     
@@ -427,8 +355,12 @@ const fetchJobsFromApi = async (searchParams: JobSearchParams): Promise<JobSearc
       throw apiError;
     }
     
-    const data = await response.json();
-    return data as JobSearchResponse;
+    const data = await response.json() as JobSearchResponse;
+    
+    // Enhance job data with logos
+    data.data = await enhanceJobData(data.data);
+    
+    return data;
   } catch (error) {
     console.error('Error fetching job search results:', error);
     throw error;
@@ -436,39 +368,30 @@ const fetchJobsFromApi = async (searchParams: JobSearchParams): Promise<JobSearc
 };
 
 /**
- * Search for jobs using cached data or API
+ * Search for jobs and process them with LLM
  * @param searchParams - Parameters for the job search query
- * @returns Promise with job search results
+ * @returns Promise with job search results including processed data
  */
 export const searchJobs = async (searchParams: JobSearchParams): Promise<JobSearchResponse> => {
   if (!validateApiKeys()) {
     throw new Error('Required API keys not configured');
   }
-
+  
   try {
-    // First, try to get results from the database
-    const dbResults = await searchJobsInDatabase(searchParams.query);
-    
-    // If we have enough results in the database, return them
-    if (dbResults.length >= 10) {
-      console.log(`Found ${dbResults.length} relevant results in database`);
-      
-      // Format results to match API response structure
-      return {
-        status: 'success',
-        request_id: `db-request-${Date.now()}`,
-        parameters: searchParams,
-        data: dbResults
-      };
-    }
-    
-    // Otherwise, fetch from API
-    console.log('Not enough results in database, fetching from API');
+    // Fetch from API
     const apiResponse = await fetchJobsFromApi(searchParams);
     
-    // If API call was successful, save results to database
+    // Process each job with LLM to extract structured data
     if (apiResponse.status === 'success' && apiResponse.data.length > 0) {
-      await saveJobsToDatabase(apiResponse.data, searchParams.query);
+      const processedJobs = await Promise.all(
+        apiResponse.data.map(job => processJobWithLLM(job, searchParams.query))
+      );
+      
+      // Return the processed results
+      return {
+        ...apiResponse,
+        data: processedJobs
+      };
     }
     
     return apiResponse;
@@ -487,25 +410,9 @@ export const getJobDetails = async (jobId: string): Promise<any> => {
   if (!validateApiKeys()) {
     throw new Error('Required API keys not configured');
   }
-
+  
   try {
-    // First, check if the job details exist in Supabase
-    const { data: jobFromDb, error: dbError } = await supabase
-      .from('job_vectors')
-      .select('*')
-      .eq('job_id', jobId)
-      .single();
-    
-    if (jobFromDb && !dbError) {
-      console.log('Job details found in database');
-      return {
-        status: 'success',
-        data: [jobFromDb]
-      };
-    }
-    
-    // If not found in DB, fetch from API
-    console.log('Job details not found in database, fetching from API');
+    // Fetch from API
     const url = buildUrl('/job-details', { job_id: jobId });
     const options = getRequestOptions();
     
@@ -519,9 +426,19 @@ export const getJobDetails = async (jobId: string): Promise<any> => {
     
     const apiResponse = await response.json();
     
-    // If we got details, save to database for future use
+    // Enhance job data with logos
     if (apiResponse.status === 'success' && apiResponse.data.length > 0) {
-      await saveJobsToDatabase(apiResponse.data, `job_id:${jobId}`);
+      apiResponse.data = await enhanceJobData(apiResponse.data);
+      
+      // Process with LLM for additional structured data
+      const processedJobs = await Promise.all(
+        apiResponse.data.map(job => processJobWithLLM(job, `job_id:${jobId}`))
+      );
+      
+      return {
+        ...apiResponse,
+        data: processedJobs
+      };
     }
     
     return apiResponse;
@@ -541,31 +458,9 @@ export const getJobSalaries = async (jobTitle: string, location?: string): Promi
   if (!validateApiKeys()) {
     throw new Error('Required API keys not configured');
   }
-
-  // Create a unique key for this salary search
-  const salarySearchKey = `${jobTitle}${location ? `-${location}` : ''}`;
   
   try {
-    // First check if we have this salary data cached
-    const { data: salaryFromDb, error: dbError } = await supabase
-      .from('salary_vectors')
-      .select('*')
-      .textSearch('search_key', salarySearchKey, { 
-        config: 'english',
-        type: 'plain'
-      })
-      .limit(1);
-    
-    if (salaryFromDb && salaryFromDb.length > 0 && !dbError) {
-      console.log('Salary data found in database');
-      return {
-        status: 'success',
-        data: salaryFromDb[0].salary_data
-      };
-    }
-    
-    // If not found in DB, fetch from API
-    console.log('Salary data not found in database, fetching from API');
+    // Fetch from API
     const url = buildUrl('/estimated-salary', {
       job_title: jobTitle,
       location: location || '',
@@ -584,110 +479,67 @@ export const getJobSalaries = async (jobTitle: string, location?: string): Promi
     const apiResponse = await response.json();
     
     // Process salary data with LLM for additional insights
-    const salaryData = apiResponse.data;
-    let processedSalaryData = salaryData;
-    
-    try {
-      // Use LLM to add additional context to salary data
-      const salaryPrompt = `
-        Analyze this salary data for ${jobTitle} ${location ? `in ${location}` : ''}:
-        ${JSON.stringify(salaryData)}
-        
-        Extract additional insights such as:
-        - Industry comparisons
-        - Experience level breakdowns
-        - Educational requirements impact
-        
-        Return ONLY a JSON object with the original data plus these new fields.
-      `;
-      
-      const salaryResponse = await groqClient.chat.completions.create({
-        model: "llama3-70b-8192",
-        messages: [
-          {
-            role: "system",
-            content: "You are a salary data analyst. Extract and enhance salary information."
-          },
-          {
-            role: "user",
-            content: salaryPrompt
-          }
-        ],
-        temperature: 0.1,
-        max_tokens: 1000
-      });
-      
-      const salaryContent = salaryResponse.choices[0]?.message?.content || '{}';
-      // Extract JSON from content (in case it's wrapped in markdown code blocks)
-      const jsonMatch = salaryContent.match(/```json\n([\s\S]*)\n```/) || salaryContent.match(/```\n([\s\S]*)\n```/) || [null, salaryContent];
-      let jsonContent = jsonMatch[1] || salaryContent;
+    if (apiResponse.status === 'success' && apiResponse.data) {
+      const salaryData = apiResponse.data;
+      let processedSalaryData = salaryData;
       
       try {
-        processedSalaryData = JSON.parse(jsonContent);
-      } catch (parseError) {
-        console.error('Error parsing LLM salary response:', parseError);
+        // Use LLM to add additional context to salary data
+        const salaryPrompt = `
+          Analyze this salary data for ${jobTitle} ${location ? `in ${location}` : ''}:
+          ${JSON.stringify(salaryData)}
+          
+          Extract additional insights such as:
+          - Industry comparisons
+          - Experience level breakdowns
+          - Educational requirements impact
+          
+          Return ONLY a JSON object with the original data plus these new fields.
+        `;
+        
+        const salaryResponse = await groqClient.chat.completions.create({
+          model: "llama3-70b-8192",
+          messages: [
+            {
+              role: "system",
+              content: "You are a salary data analyst. Extract and enhance salary information."
+            },
+            {
+              role: "user",
+              content: salaryPrompt
+            }
+          ],
+          temperature: 0.1,
+          max_tokens: 1000
+        });
+        
+        const salaryContent = salaryResponse.choices[0]?.message?.content || '{}';
+        // Extract JSON from content (in case it's wrapped in markdown code blocks)
+        const jsonMatch = salaryContent.match(/```json\n([\s\S]*)\n```/) || salaryContent.match(/```\n([\s\S]*)\n```/) || [null, salaryContent];
+        let jsonContent = jsonMatch[1] || salaryContent;
+        
+        try {
+          processedSalaryData = JSON.parse(jsonContent);
+        } catch (parseError) {
+          console.error('Error parsing LLM salary response:', parseError);
+          processedSalaryData = salaryData;
+        }
+      } catch (llmError) {
+        console.error('Error processing salary data with LLM:', llmError);
         processedSalaryData = salaryData;
       }
-    } catch (llmError) {
-      console.error('Error processing salary data with LLM:', llmError);
-      processedSalaryData = salaryData;
-    }
-    
-    // Save the processed salary data to database
-    if (apiResponse.status === 'success' && processedSalaryData) {
-      const { error } = await supabase
-        .from('salary_vectors')
-        .insert({
-          search_key: salarySearchKey,
-          job_title: jobTitle,
-          location: location || null,
-          salary_data: processedSalaryData,
-          search_terms: [jobTitle.toLowerCase(), location ? location.toLowerCase() : ''],
-          created_at: new Date().toISOString()
-        });
       
-      if (error) {
-        console.error('Error saving salary data to database:', error);
-      }
+      // Return enhanced data
+      return {
+        status: 'success',
+        data: processedSalaryData
+      };
     }
     
-    // Return enhanced data
-    return {
-      status: 'success',
-      data: processedSalaryData
-    };
+    return apiResponse;
   } catch (error) {
     console.error('Error fetching salary estimates:', error);
     throw error;
-  }
-};
-
-/**
- * Setup the necessary Supabase tables and functions if they don't exist
- */
-export const setupSupabaseVectorStore = async (): Promise<void> => {
-  try {
-    // Create job_vectors table if it doesn't exist
-    const { error: tableError } = await supabase.rpc('create_job_vectors_table_no_vector', {});
-    if (tableError && !tableError.message.includes('already exists')) {
-      console.error('Error creating job_vectors table:', tableError);
-    }
-    
-    // Create salary_vectors table if it doesn't exist
-    const { error: salaryTableError } = await supabase.rpc('create_salary_vectors_table_no_vector', {});
-    if (salaryTableError && !salaryTableError.message.includes('already exists')) {
-      console.error('Error creating salary_vectors table:', salaryTableError);
-    }
-    
-    // Create indexes for search
-    const { error: indexError } = await supabase.rpc('create_job_search_indexes', {});
-    if (indexError && !indexError.message.includes('already exists')) {
-      console.error('Error creating search indexes:', indexError);
-    }
-    
-    console.log('Supabase store setup completed');
-  } catch (error) {
-    console.error('Error setting up Supabase store:', error);
   }
 };
 
@@ -695,6 +547,5 @@ export const setupSupabaseVectorStore = async (): Promise<void> => {
 export default {
   searchJobs,
   getJobDetails,
-  getJobSalaries,
-  setupSupabaseVectorStore
+  getJobSalaries
 };
