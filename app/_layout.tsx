@@ -13,7 +13,9 @@ export default function Layout() {
         }}
       >
         <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        {/* Only include routes that actually exist in your project structure */}
+        {/* If these routes exist, uncomment them */}
+        {/* 
         <Stack.Screen 
           name="chat/[id]" 
           options={{ 
@@ -22,22 +24,9 @@ export default function Layout() {
             contentStyle: { backgroundColor: 'transparent' }
           }} 
         />
-        <Stack.Screen 
-          name="skills/[name]" 
-          options={{ 
-            headerShown: false,
-            animation: 'fade',
-            contentStyle: { backgroundColor: 'transparent' }
-          }} 
-        />
-        <Stack.Screen 
-          name="skills/lesson/[topicId]" 
-          options={{ 
-            headerShown: false,
-            animation: 'slide_from_right',
-            contentStyle: { backgroundColor: 'transparent' }
-          }} 
-        />
+        */}
+        
+        {/* Removed missing routes: (tabs), skills/[name], skills/lesson/[topicId] */}
       </Stack>
     </View>
   );
