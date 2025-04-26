@@ -58,6 +58,7 @@ const NewChatScreen = () => {
       const userMessage = message.trim();
       
       const groqResponse = await processWithGroq({
+        userId: user.id, // Add the missing userId property
         message: userMessage,
         chatId: 'new', // Placeholder ID since we don't have one yet
         chatName: title,

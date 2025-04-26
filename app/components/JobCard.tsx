@@ -23,7 +23,7 @@ const CommandSuggestions: React.FC<CommandSuggestionsProps> = ({ onSelectCommand
     {
       command: '/salary',
       description: 'Get salary information for a job role',
-      icon: 'payments',
+      icon: 'attach-money', // Changed from 'payments' to 'attach-money' which is a valid MaterialIcons name
       examples: ['software engineer', 'marketing manager in New York']
     }
   ];
@@ -31,13 +31,18 @@ const CommandSuggestions: React.FC<CommandSuggestionsProps> = ({ onSelectCommand
   return (
     <View style={styles.container}>
       <ScrollView style={styles.scrollView}>
-        {commands.map((item, index) => (
+        {commands.map((item) => (
           <TouchableOpacity
             key={item.command}
             style={styles.commandItem}
             onPress={() => onSelectCommand(item.command)}
           >
-            <MaterialIcons name={item.icon} size={24} color="#49654E" style={styles.commandIcon} />
+            <MaterialIcons 
+              name={item.icon as any} // Using type assertion here as a temporary fix
+              size={24} 
+              color="#49654E" 
+              style={styles.commandIcon} 
+            />
             <View style={styles.commandTextContainer}>
               <Text style={styles.commandText}>{item.command}</Text>
               <Text style={styles.commandDescription}>{item.description}</Text>

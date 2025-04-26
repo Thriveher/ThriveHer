@@ -1,7 +1,7 @@
 // jobSearchApi.ts
 
 // Define TypeScript interfaces for the API response
-interface JobSearchParams {
+export interface JobSearchParams {
   query: string;
   page?: number;
   numPages?: number;
@@ -10,13 +10,13 @@ interface JobSearchParams {
   language?: string;
 }
 
-interface ApplyOption {
+export interface ApplyOption {
   publisher: string;
   apply_link: string;
   is_direct: boolean;
 }
 
-interface JobData {
+export interface JobData {
   job_id: string;
   job_title: string;
   employer_name: string;
@@ -40,14 +40,14 @@ interface JobData {
   [key: string]: any; // Allow for additional fields
 }
 
-interface JobSearchResponse {
+export interface JobSearchResponse {
   status: string;
   request_id: string;
   parameters: JobSearchParams;
   data: JobData[];
 }
 
-interface ApiError {
+export interface ApiError {
   message: string;
   status: number;
   originalError?: Error;
@@ -153,7 +153,10 @@ const buildUrl = (endpoint: string, params: Record<string, string | number | und
  */
 export const searchJobs = async (searchParams: JobSearchParams): Promise<JobSearchResponse> => {
   if (!validateApiKey()) {
-    throw new Error('API key not configured');
+    throw {
+      message: 'API key not configured',
+      status: 500
+    } as ApiError;
   }
 
   const params = {
@@ -181,7 +184,7 @@ export const searchJobs = async (searchParams: JobSearchParams): Promise<JobSear
     return data as JobSearchResponse;
   } catch (error) {
     console.error('Error fetching job search results:', error);
-    throw error;
+    throw await handleApiError(error);
   }
 };
 
@@ -192,7 +195,10 @@ export const searchJobs = async (searchParams: JobSearchParams): Promise<JobSear
  */
 export const getJobDetails = async (jobId: string): Promise<any> => {
   if (!validateApiKey()) {
-    throw new Error('API key not configured');
+    throw {
+      message: 'API key not configured',
+      status: 500
+    } as ApiError;
   }
 
   const url = buildUrl('/job-details', { job_id: jobId });
@@ -210,7 +216,7 @@ export const getJobDetails = async (jobId: string): Promise<any> => {
     return await response.json();
   } catch (error) {
     console.error('Error fetching job details:', error);
-    throw error;
+    throw await handleApiError(error);
   }
 };
 
@@ -222,7 +228,10 @@ export const getJobDetails = async (jobId: string): Promise<any> => {
  */
 export const getJobSalaries = async (jobTitle: string, location?: string): Promise<any> => {
   if (!validateApiKey()) {
-    throw new Error('API key not configured');
+    throw {
+      message: 'API key not configured',
+      status: 500
+    } as ApiError;
   }
 
   const url = buildUrl('/estimated-salary', {
@@ -244,7 +253,7 @@ export const getJobSalaries = async (jobTitle: string, location?: string): Promi
     return await response.json();
   } catch (error) {
     console.error('Error fetching salary estimates:', error);
-    throw error;
+    throw await handleApiError(error);
   }
 };
 

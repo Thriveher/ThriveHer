@@ -6,8 +6,18 @@ interface CommandSuggestionsProps {
   onSelectCommand: (command: string) => void;
 }
 
+// Define a type for valid MaterialIcons names
+type MaterialIconName = 'work' | 'description' | 'attach-money';
+
+interface CommandItem {
+  command: string;
+  description: string;
+  icon: MaterialIconName;
+  examples: string[];
+}
+
 const CommandSuggestions: React.FC<CommandSuggestionsProps> = ({ onSelectCommand }) => {
-  const commands = [
+  const commands: CommandItem[] = [
     {
       command: '/job',
       description: 'Search for jobs',
@@ -23,7 +33,7 @@ const CommandSuggestions: React.FC<CommandSuggestionsProps> = ({ onSelectCommand
     {
       command: '/salary',
       description: 'Get salary information for a job role',
-      icon: 'payments',
+      icon: 'attach-money',
       examples: ['software engineer', 'marketing manager in New York']
     }
   ];
@@ -31,13 +41,18 @@ const CommandSuggestions: React.FC<CommandSuggestionsProps> = ({ onSelectCommand
   return (
     <View style={styles.container}>
       <ScrollView style={styles.scrollView}>
-        {commands.map((item, index) => (
+        {commands.map((item) => (
           <TouchableOpacity
             key={item.command}
             style={styles.commandItem}
             onPress={() => onSelectCommand(item.command)}
           >
-            <MaterialIcons name={item.icon} size={24} color="#49654E" style={styles.commandIcon} />
+            <MaterialIcons 
+              name={item.icon as any} 
+              size={24} 
+              color="#49654E" 
+              style={styles.commandIcon} 
+            />
             <View style={styles.commandTextContainer}>
               <Text style={styles.commandText}>{item.command}</Text>
               <Text style={styles.commandDescription}>{item.description}</Text>

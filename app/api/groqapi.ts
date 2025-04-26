@@ -1,14 +1,12 @@
 import Constants from 'expo-constants';
 import { createClient } from '@supabase/supabase-js';
-// Add type declaration import for uuid
+// Import uuid but don't redeclare types
 import { v4 as uuidv4 } from 'uuid';
 import { searchJobs, getJobDetails, getJobSalaries } from '../api/getjobsforchat';
 import Groq from 'groq-sdk';
 
-// Declare module for uuid if types are not installed
-declare module 'uuid' {
-  export function v4(): string;
-}
+// Remove the redundant declaration that's causing the error
+// The type is already provided by @types/uuid in node_modules
 
 interface GroqRequest {
   message: string;

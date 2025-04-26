@@ -294,10 +294,17 @@ export const clearChatHistory = async (chatId: string): Promise<Chat | null> => 
       
     if (error) throw error;
     
-    // Return the updated chat (now with empty messages)
+    // Get the updated chat
+    const updatedChat = await getChatById(chatId);
+    if (!updatedChat) throw new Error('Failed to fetch updated chat');
+    
+    // Return the proper chat object with empty messages
     return {
-      ...(await getChatById(chatId)),
-      messages: []
+      id: updatedChat.id,
+      name: updatedChat.name,  // Ensure name is always defined
+      messages: [],
+      createdAt: updatedChat.createdAt,
+      updatedAt: updatedChat.updatedAt
     };
   } catch (error) {
     console.error('Error clearing chat history:', error);

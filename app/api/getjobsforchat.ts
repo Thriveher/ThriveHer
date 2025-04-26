@@ -316,7 +316,7 @@ const fetchEmployerLogo = async (employerName: string): Promise<string | null> =
  * @returns Enhanced job data with logos
  */
 const enhanceJobData = async (jobs: JobData[]): Promise<JobData[]> => {
-  const enhancedJobs = await Promise.all(jobs.map(async (job) => {
+  const enhancedJobs = await Promise.all(jobs.map(async (job: JobData) => {
     // If employer logo is missing, try to fetch it
     if (!job.employer_logo) {
       job.employer_logo = await fetchEmployerLogo(job.employer_name);
@@ -432,7 +432,7 @@ export const getJobDetails = async (jobId: string): Promise<any> => {
       
       // Process with LLM for additional structured data
       const processedJobs = await Promise.all(
-        apiResponse.data.map(job => processJobWithLLM(job, `job_id:${jobId}`))
+        apiResponse.data.map((job: JobData) => processJobWithLLM(job, `job_id:${jobId}`))
       );
       
       return {
