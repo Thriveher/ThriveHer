@@ -1,17 +1,44 @@
 {
-  "extends": "expo/tsconfig.base",
+  "extends": "@expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
     "paths": {
       "@/*": [
         "./*"
-      ]
+      ]a{
+        "compilerOptions": {
+          "strict": true,
+          "jsx": "react-jsx",
+          "allowJs": true,
+          "esModuleInterop": true,
+          "module": "esnext",
+          "moduleResolution": "node",
+          "resolveJsonModule": true,
+          "target": "es2020",
+          "paths": {
+            "@/*": [
+              "./*"
+            ]
+          }
+        },
+        "include": [
+          "**/*.ts",
+          "**/*.tsx",
+          ".expo/types/**/*.ts",
+          "expo-env.d.ts",
+          "lib/supabase.ts"
+        ],
+        "exclude": [
+          "node_modules"
+        ]
+      }
     }
   },
   "include": [
     "**/*.ts",
     "**/*.tsx",
     ".expo/types/**/*.ts",
-    "expo-env.d.ts"
-, "lib/supabase.js"  ]
+    "expo-env.d.ts",
+    "lib/supabase.ts"
+  ]
 }

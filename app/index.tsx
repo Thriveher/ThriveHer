@@ -1,21 +1,60 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, SafeAreaView, StatusBar, Image, Platform } from 'react-native';
+// The file should already have .tsx extension, but let's ensure TypeScript is configured
+
+// Create or update tsconfig.json in your project root with:
+// {
+//   "compilerOptions": {
+//     "jsx": "react-native",
+//     "esModuleInterop": true,
+//     "strict": true,
+//     "target": "esnext",
+//     "module": "esnext",
+//     "moduleResolution": "node",
+//     "lib": ["esnext"],
+//     "allowSyntheticDefaultImports": true
+//   },
+//   "exclude": ["node_modules"]
+// }
+
+import * as React from 'react';
+import { 
+  View, 
+  Text, 
+  TouchableOpacity, 
+  SafeAreaView, 
+  StatusBar, 
+  Image, 
+  Platform,
+  StyleSheet,
+  Dimensions
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { supabase } from '../lib/supabase.js';
-import * as WebBrowser from 'expo-web-browser';
+import { supabase } from '../lib/supabase';
+import * as WebBrowser from 'expo-web-browser'; 
 import * as Google from 'expo-auth-session/providers/google';
 import { makeRedirectUri } from 'expo-auth-session';
 import { AntDesign } from '@expo/vector-icons';
-import styles from './styles';
+
+// Color constants
+const SOFT_GREEN = '#8BA889';
+const DEEP_GREEN = '#253528';
+const MEDIUM_OLIVE = '#49654E';
+const WHITE = '#FFFFFF';
+const ERROR_RED = '#ff3b30';
+const { width, height } = Dimensions.get('window');
 
 // For Google Auth with Expo
 WebBrowser.maybeCompleteAuthSession();
 
+// Define an interface for the error state
+interface AuthError {
+  message: string;
+}
+
 export default function WelcomePage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
   
   // Get the correct redirect URI
   const redirectUri = makeRedirectUri({
@@ -36,7 +75,7 @@ export default function WelcomePage() {
     }
   );
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (response?.type === 'success') {
       // The ID token will contain a matching nonce from the request
       const { id_token } = response.params;
@@ -106,7 +145,7 @@ export default function WelcomePage() {
         <SafeAreaView style={styles.contentContainer}>
           <View style={styles.imageContainer}>
             <Image
-              source={require('../assets/images/welcome-page.png')}
+              source={require('../../assets/images/welcome-page.png')}
               style={styles.welcomeImage}
               resizeMode="contain"
             />
@@ -124,8 +163,8 @@ export default function WelcomePage() {
           </View>
           
           {error && (
-            <View style={{ marginVertical: 10, padding: 10 }}>
-              <Text style={{ color: '#ff3b30', textAlign: 'center' }}>{error}</Text>
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>{error}</Text>
             </View>
           )}
           
@@ -133,7 +172,7 @@ export default function WelcomePage() {
             style={[
               styles.button, 
               { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
-              loading && { opacity: 0.6 }
+              loading && styles.buttonDisabled
             ]}
             onPress={handleSignIn}
             disabled={loading || !request}
@@ -148,3 +187,95 @@ export default function WelcomePage() {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  background: {
+    flex: 1,
+    width: width,
+    height: height,
+  },
+  contentContainer: {
+    flex: 1,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 60,
+    paddingBottom: 50,
+    paddingHorizontal: 24,
+  },
+  imageContainer: {
+    flex: 2,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  welcomeImage: {
+    width: '100%',
+    height: '100%',
+    maxHeight: height * 0.45,
+  },
+  textContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  title: {
+    fontFamily: 'PlayfairDisplay-Bold', // A sophisticated font similar to Zara's aesthetic
+    fontSize: 42,
+    letterSpacing: 1,
+    color: DEEP_GREEN,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontFamily: 'Montserrat-Medium', // A clean, modern font for contrast
+    fontSize: 18,
+    letterSpacing: 2,
+    color: DEEP_GREEN,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+  },
+  descriptionContainer: {
+    width: '85%',
+    marginVertical: 24,
+  },
+  descriptionText: {
+    fontFamily: 'Montserrat-Regular',
+    fontSize: 16,
+    lineHeight: 24,
+    textAlign: 'center',
+    color: DEEP_GREEN,
+  },
+  button: {
+    backgroundColor: DEEP_GREEN,
+    paddingVertical: 16,
+    width: '85%',
+    borderRadius: 12,
+    marginTop: 24,
+    elevation: 4,
+  },
+  buttonText: {
+    fontFamily: 'Montserrat-SemiBold',
+    fontSize: 16,
+    color: WHITE,
+    textAlign: 'center',
+    letterSpacing: 1,
+  },
+  errorContainer: {
+    marginVertical: 10,
+    padding: 10,
+    width: '85%',
+  },
+  errorText: {
+    fontFamily: 'Montserrat-Regular',
+    fontSize: 14,
+    color: ERROR_RED,
+    textAlign: 'center',
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+});
