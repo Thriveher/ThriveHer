@@ -1,32 +1,5 @@
-// The file should already have .tsx extension, but let's ensure TypeScript is configured
-
-// Create or update tsconfig.json in your project root with:
-// {
-//   "compilerOptions": {
-//     "jsx": "react-native",
-//     "esModuleInterop": true,
-//     "strict": true,
-//     "target": "esnext",
-//     "module": "esnext",
-//     "moduleResolution": "node",
-//     "lib": ["esnext"],
-//     "allowSyntheticDefaultImports": true
-//   },
-//   "exclude": ["node_modules"]
-// }
-
 import * as React from 'react';
-import { 
-  View, 
-  Text, 
-  TouchableOpacity, 
-  SafeAreaView, 
-  StatusBar, 
-  Image, 
-  Platform,
-  StyleSheet,
-  Dimensions
-} from 'react-native';
+import { View, Text, TouchableOpacity, SafeAreaView, Image, StyleSheet, Dimensions, ViewStyle, TextStyle, ImageStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { supabase } from '../lib/supabase';
@@ -41,7 +14,6 @@ const DEEP_GREEN = '#253528';
 const MEDIUM_OLIVE = '#49654E';
 const WHITE = '#FFFFFF';
 const ERROR_RED = '#ff3b30';
-const { width, height } = Dimensions.get('window');
 
 // For Google Auth with Expo
 WebBrowser.maybeCompleteAuthSession();
@@ -50,6 +22,9 @@ WebBrowser.maybeCompleteAuthSession();
 interface AuthError {
   message: string;
 }
+
+// Get screen dimensions
+const { height: screenHeight, width: screenWidth } = Dimensions.get('window');
 
 export default function WelcomePage() {
   const router = useRouter();
@@ -64,9 +39,7 @@ export default function WelcomePage() {
   // Configure Google auth properly with explicit nonce handling
   const [request, response, promptAsync] = Google.useAuthRequest(
     {
-      clientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID,
-      androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-      iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+      clientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID, 
       webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
       redirectUri,
       responseType: 'id_token',
@@ -137,7 +110,6 @@ export default function WelcomePage() {
 
   return (
     <View style={styles.container}>
-      <StatusBar translucent backgroundColor="transparent" />
       <LinearGradient
         colors={['rgba(139, 168, 137, 0.9)', 'rgba(139, 168, 137, 0.7)']}
         style={styles.background}
@@ -145,9 +117,10 @@ export default function WelcomePage() {
         <SafeAreaView style={styles.contentContainer}>
           <View style={styles.imageContainer}>
             <Image
-              source={require('../../assets/images/welcome-page.png')}
+              source={require('@/assets/images/welcome-page.png')}
               style={styles.welcomeImage}
               resizeMode="contain"
+              accessibilityLabel="Welcome image"
             />
           </View>
           
@@ -171,16 +144,19 @@ export default function WelcomePage() {
           <TouchableOpacity 
             style={[
               styles.button, 
-              { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
               loading && styles.buttonDisabled
             ]}
             onPress={handleSignIn}
             disabled={loading || !request}
+            accessibilityRole="button"
+            accessibilityLabel="Sign in with Google"
           >
-            <AntDesign name="google" size={24} color="white" style={{ marginRight: 10 }} />
-            <Text style={styles.buttonText}>
-              {loading ? 'Signing in...' : 'Sign in with Google'}
-            </Text>
+            <View style={styles.buttonContent}>
+              <AntDesign name="google" size={24} color="white" style={styles.buttonIcon} />
+              <Text style={styles.buttonText}>
+                {loading ? 'Signing in...' : 'Sign in with Google'}
+              </Text>
+            </View>
           </TouchableOpacity>
         </SafeAreaView>
       </LinearGradient>
@@ -188,14 +164,37 @@ export default function WelcomePage() {
   );
 }
 
-const styles = StyleSheet.create({
+// Define style types interface
+interface Styles {
+  container: ViewStyle;
+  background: ViewStyle;
+  contentContainer: ViewStyle;
+  imageContainer: ViewStyle;
+  welcomeImage: ImageStyle;
+  textContainer: ViewStyle;
+  title: TextStyle;
+  subtitle: TextStyle;
+  descriptionContainer: ViewStyle;
+  descriptionText: TextStyle;
+  button: ViewStyle;
+  buttonContent: ViewStyle;
+  buttonIcon: TextStyle;
+  buttonText: TextStyle;
+  errorContainer: ViewStyle;
+  errorText: TextStyle;
+  buttonDisabled: ViewStyle;
+}
+
+const styles = StyleSheet.create<Styles>({
   container: {
     flex: 1,
+    height: screenHeight,
+    width: '100%',
   },
   background: {
     flex: 1,
-    width: width,
-    height: height,
+    width: '100%',
+    height: '100%',
   },
   contentContainer: {
     flex: 1,
@@ -204,26 +203,31 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 50,
     paddingHorizontal: 24,
+    maxWidth: 600,
+    width: '100%',
+    // React Native doesn't support marginHorizontal: 'auto', so we'll handle it differently
+    alignSelf: 'center',
   },
   imageContainer: {
     flex: 2,
     width: '100%',
     justifyContent: 'center',
     alignItems: 'center',
+    maxHeight: 350,
   },
   welcomeImage: {
     width: '100%',
     height: '100%',
-    maxHeight: height * 0.45,
+    maxWidth: 400,
   },
   textContainer: {
-    flex: 1,
+    marginTop: 20,
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
   },
   title: {
-    fontFamily: 'PlayfairDisplay-Bold', // A sophisticated font similar to Zara's aesthetic
+    fontFamily: 'PlayfairDisplay-Bold',
     fontSize: 42,
     letterSpacing: 1,
     color: DEEP_GREEN,
@@ -231,7 +235,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   subtitle: {
-    fontFamily: 'Montserrat-Medium', // A clean, modern font for contrast
+    fontFamily: 'Montserrat-Medium',
     fontSize: 18,
     letterSpacing: 2,
     color: DEEP_GREEN,
@@ -255,7 +259,20 @@ const styles = StyleSheet.create({
     width: '85%',
     borderRadius: 12,
     marginTop: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
     elevation: 4,
+    // cursor is removed as it's not available in React Native
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  buttonIcon: {
+    marginRight: 10,
   },
   buttonText: {
     fontFamily: 'Montserrat-SemiBold',
@@ -277,5 +294,6 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.6,
+    // cursor is removed as it's not available in React Native
   },
 });

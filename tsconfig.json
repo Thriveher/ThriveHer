@@ -1,37 +1,19 @@
 {
-  "extends": "@expo/tsconfig.base",
   "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext",
+    "jsx": "react-native",
     "strict": true,
+    "esModuleInterop": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
     "paths": {
       "@/*": [
         "./*"
-      ]a{
-        "compilerOptions": {
-          "strict": true,
-          "jsx": "react-jsx",
-          "allowJs": true,
-          "esModuleInterop": true,
-          "module": "esnext",
-          "moduleResolution": "node",
-          "resolveJsonModule": true,
-          "target": "es2020",
-          "paths": {
-            "@/*": [
-              "./*"
-            ]
-          }
-        },
-        "include": [
-          "**/*.ts",
-          "**/*.tsx",
-          ".expo/types/**/*.ts",
-          "expo-env.d.ts",
-          "lib/supabase.ts"
-        ],
-        "exclude": [
-          "node_modules"
-        ]
-      }
+      ]
     }
   },
   "include": [
@@ -40,5 +22,9 @@
     ".expo/types/**/*.ts",
     "expo-env.d.ts",
     "lib/supabase.ts"
-  ]
+  ],
+  "exclude": [
+    "node_modules"
+  ],
+  "extends": "expo/tsconfig.base"
 }
