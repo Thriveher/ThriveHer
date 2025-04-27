@@ -64,9 +64,9 @@ interface ProcessedJob extends JobData {
   query_text: string;
 }
 
-// Base API configuration
+// Base API configuration with hardcoded API key for demo app
 const API_BASE_URL = 'https://jsearch.p.rapidapi.com';
-const API_KEY = process.env.EXPO_PUBLIC_RAPIDAPI_KEY || ''; // Fallback to provided key for testing
+const API_KEY = '3fe4222f05mshee7786231fb68c8p1cae9bjsnaeb6f8469718'; // Hardcoded API key for demo
 const API_HOST = 'jsearch.p.rapidapi.com';
 
 // Groq configuration
@@ -99,11 +99,7 @@ const getRequestOptions = (): RequestInit => {
 const validateApiKeys = (): boolean => {
   let isValid = true;
   
-  if (!API_KEY) {
-    console.error('RapidAPI key is not configured');
-    isValid = false;
-  }
-  
+  // API_KEY is now hardcoded, so we only need to check GROQ_API_KEY
   if (!GROQ_API_KEY) {
     console.error('Groq API key is not configured');
     isValid = false;

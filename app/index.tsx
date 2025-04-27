@@ -30,17 +30,21 @@ export default function WelcomePage() {
   const router = useRouter();
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [imageLoaded, setImageLoaded] = React.useState(false);
   
   // Get the correct redirect URI
   const redirectUri = makeRedirectUri({
     scheme: 'yourapp', // Replace with your app's scheme
   });
   
+  // Hardcoded Google client ID for demo purposes
+  const googleWebClientId = '533095823294-v30vk06bomnpa5gk4qtgcagvct3pjgk0.apps.googleusercontent.com';
+  
   // Configure Google auth properly with explicit nonce handling
   const [request, response, promptAsync] = Google.useAuthRequest(
     {
-      clientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID, 
-      webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+      clientId: googleWebClientId, // Use hardcoded value
+      webClientId: googleWebClientId, // Use hardcoded value
       redirectUri,
       responseType: 'id_token',
       usePKCE: false,
@@ -108,84 +112,74 @@ export default function WelcomePage() {
     }
   };
 
+  // Handle image loading errors
+  const handleImageError = () => {
+    console.error('Error loading image');
+    setImageLoaded(false);
+  };
+
   return (
     <View style={styles.container}>
       <LinearGradient
         colors={['rgba(139, 168, 137, 0.9)', 'rgba(139, 168, 137, 0.7)']}
         style={styles.background}
       >
-        <SafeAreaView style={styles.contentContainer}>
-          <View style={styles.imageContainer}>
-            <Image
-              source={require('@/assets/images/welcome-page.png')}
-              style={styles.welcomeImage}
-              resizeMode="contain"
-              accessibilityLabel="Welcome image"
-            />
-          </View>
-          
-          <View style={styles.textContainer}>
-            <Text style={styles.title}>Thrive Her</Text>
-            <Text style={styles.subtitle}>Connect. Grow. Succeed.</Text>
-          </View>
-          
-          <View style={styles.descriptionContainer}>
-            <Text style={styles.descriptionText}>
-              A community designed to empower women through networking, resources, and growth opportunities.
-            </Text>
-          </View>
-          
-          {error && (
-            <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>{error}</Text>
+        <SafeAreaView style={styles.safeArea}>
+          <View style={styles.contentContainer}>
+            <View style={styles.imageContainer}>
+              <Image
+                source={{ uri: 'https://github.com/Durva24/ThriveHer/blob/main/assets/images/welcome-page.png?raw=true' }}
+                style={styles.welcomeImage}
+                resizeMode="contain"
+                accessibilityLabel="Welcome image"
+                onLoad={() => setImageLoaded(true)}
+                onError={handleImageError}
+              />
             </View>
-          )}
-          
-          <TouchableOpacity 
-            style={[
-              styles.button, 
-              loading && styles.buttonDisabled
-            ]}
-            onPress={handleSignIn}
-            disabled={loading || !request}
-            accessibilityRole="button"
-            accessibilityLabel="Sign in with Google"
-          >
-            <View style={styles.buttonContent}>
-              <AntDesign name="google" size={24} color="white" style={styles.buttonIcon} />
-              <Text style={styles.buttonText}>
-                {loading ? 'Signing in...' : 'Sign in with Google'}
+            
+            <View style={styles.textContainer}>
+              <Text style={styles.title}>Thrive Her</Text>
+              <Text style={styles.subtitle}>Connect. Grow. Succeed.</Text>
+            </View>
+            
+            <View style={styles.descriptionContainer}>
+              <Text style={styles.descriptionText}>
+                A community designed to empower women through networking, resources, and growth opportunities.
               </Text>
             </View>
-          </TouchableOpacity>
+            
+            {error && (
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            )}
+            
+            <TouchableOpacity 
+              style={[
+                styles.button, 
+                loading && styles.buttonDisabled
+              ]}
+              onPress={handleSignIn}
+              disabled={loading || !request}
+              accessibilityRole="button"
+              accessibilityLabel="Sign in with Google"
+            >
+              <View style={styles.buttonContent}>
+                <AntDesign name="google" size={24} color="white" style={styles.buttonIcon} />
+                <Text style={styles.buttonText}>
+                  {loading ? 'Signing in...' : 'Sign in with Google'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
         </SafeAreaView>
       </LinearGradient>
     </View>
   );
 }
 
-// Define style types interface
-interface Styles {
-  container: ViewStyle;
-  background: ViewStyle;
-  contentContainer: ViewStyle;
-  imageContainer: ViewStyle;
-  welcomeImage: ImageStyle;
-  textContainer: ViewStyle;
-  title: TextStyle;
-  subtitle: TextStyle;
-  descriptionContainer: ViewStyle;
-  descriptionText: TextStyle;
-  button: ViewStyle;
-  buttonContent: ViewStyle;
-  buttonIcon: TextStyle;
-  buttonText: TextStyle;
-  errorContainer: ViewStyle;
-  errorText: TextStyle;
-  buttonDisabled: ViewStyle;
-}
-
-const styles = StyleSheet.create<Styles>({
+// Styles remain the same
+const styles = StyleSheet.create({
   container: {
     flex: 1,
     height: screenHeight,
@@ -196,39 +190,41 @@ const styles = StyleSheet.create<Styles>({
     width: '100%',
     height: '100%',
   },
+  safeArea: {
+    flex: 1,
+    width: '100%',
+  },
   contentContainer: {
     flex: 1,
-    justifyContent: 'space-between',
+    justifyContent: 'center', // Changed from space-between to center
     alignItems: 'center',
-    paddingTop: 60,
-    paddingBottom: 50,
-    paddingHorizontal: 24,
-    maxWidth: 600,
+    paddingTop: 40,
+    paddingBottom: 40,
+    paddingHorizontal: 20,
     width: '100%',
-    // React Native doesn't support marginHorizontal: 'auto', so we'll handle it differently
-    alignSelf: 'center',
   },
   imageContainer: {
-    flex: 2,
     width: '100%',
+    height: 300, // Fixed height instead of flex
     justifyContent: 'center',
     alignItems: 'center',
-    maxHeight: 350,
+    marginBottom: 20,
   },
   welcomeImage: {
     width: '100%',
     height: '100%',
-    maxWidth: 400,
+    maxWidth: 350,
   },
   textContainer: {
-    marginTop: 20,
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
+    paddingHorizontal: 10,
+    marginBottom: 15,
   },
   title: {
     fontFamily: 'PlayfairDisplay-Bold',
-    fontSize: 42,
+    fontSize: 38,
     letterSpacing: 1,
     color: DEEP_GREEN,
     marginBottom: 8,
@@ -236,15 +232,15 @@ const styles = StyleSheet.create<Styles>({
   },
   subtitle: {
     fontFamily: 'Montserrat-Medium',
-    fontSize: 18,
+    fontSize: 16,
     letterSpacing: 2,
     color: DEEP_GREEN,
     textAlign: 'center',
     textTransform: 'uppercase',
   },
   descriptionContainer: {
-    width: '85%',
-    marginVertical: 24,
+    width: '90%',
+    marginBottom: 30,
   },
   descriptionText: {
     fontFamily: 'Montserrat-Regular',
@@ -255,16 +251,16 @@ const styles = StyleSheet.create<Styles>({
   },
   button: {
     backgroundColor: DEEP_GREEN,
-    paddingVertical: 16,
-    width: '85%',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    width: '80%',
     borderRadius: 12,
-    marginTop: 24,
+    marginTop: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 4,
-    // cursor is removed as it's not available in React Native
   },
   buttonContent: {
     flexDirection: 'row',
@@ -279,7 +275,7 @@ const styles = StyleSheet.create<Styles>({
     fontSize: 16,
     color: WHITE,
     textAlign: 'center',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
   errorContainer: {
     marginVertical: 10,
@@ -294,6 +290,5 @@ const styles = StyleSheet.create<Styles>({
   },
   buttonDisabled: {
     opacity: 0.6,
-    // cursor is removed as it's not available in React Native
   },
 });

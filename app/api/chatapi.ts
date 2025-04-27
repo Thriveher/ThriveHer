@@ -1,4 +1,12 @@
-import { supabase } from '../../lib/supabase';
+import { createClient } from '@supabase/supabase-js';
+
+// Hardcoded Supabase URL and key for demo project
+const supabaseUrl = "https://ibwjjwzomoyhkxugmmmw.supabase.co";
+const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlid2pqd3pvbW95aGt4dWdtbW13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ4NzkwODgsImV4cCI6MjA2MDQ1NTA4OH0.RmnNBQh_1KJo0TgCjs72aBoxWoOsd_vWjNeIHRfVXac";
+
+// Create Supabase client with hardcoded values
+export const supabase = createClient(supabaseUrl, supabaseKey);
+
 import { Message } from '../chat/[id]';
 
 interface ChatData {

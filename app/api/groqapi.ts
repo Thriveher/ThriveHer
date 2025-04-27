@@ -4,10 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 import { searchJobs, getJobDetails, getJobSalaries } from '../api/getjobsforchat';
 import Groq from 'groq-sdk';
-
-// Remove the redundant declaration that's causing the error
-// The type is already provided by @types/uuid in node_modules
-
+ 
 interface GroqRequest {
   message: string;
   chatId?: string; // Optional for new chats
@@ -35,9 +32,9 @@ interface JobSearchParams {
   language?: string;
 }
 
-// Initialize Supabase client
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || Constants.expoConfig?.extra?.supabaseUrl || '';
-const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || Constants.expoConfig?.extra?.supabaseKey || '';
+// Initialize Supabase client with hardcoded URL and key
+const supabaseUrl = 'https://ibwjjwzomoyhkxugmmmw.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlid2pqd3pvbW95aGt4dWdtbW13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ4NzkwODgsImV4cCI6MjA2MDQ1NTA4OH0.RmnNBQh_1KJo0TgCjs72aBoxWoOsd_vWjNeIHRfVXac';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Initialize Groq API key

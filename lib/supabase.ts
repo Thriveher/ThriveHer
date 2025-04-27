@@ -62,12 +62,14 @@ const ExpoSecureStoreAdapter: StorageAdapter = {
 // Choose storage by platform
 const storage: StorageAdapter = Platform.OS === 'web' ? createWebStorage() : ExpoSecureStoreAdapter;
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+// Hardcoded values for demo purposes only
+// In production, use environment variables instead
+const supabaseUrl = 'https://ibwjjwzomoyhkxugmmmw.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlid2pqd3pvbW95aGt4dWdtbW13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ4NzkwODgsImV4cCI6MjA2MDQ1NTA4OH0.RmnNBQh_1KJo0TgCjs72aBoxWoOsd_vWjNeIHRfVXac';
 
-// Type check for environment variables
+// Check if URL and key are available
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables. Check your .env file.');
+  throw new Error('Missing Supabase configuration. Check supabase.ts file.');
 }
 
 export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey, {

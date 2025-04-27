@@ -18,6 +18,11 @@ import { createNewChatWithMessage } from '../api/chatapi';
 import { processWithGroq } from '../api/groqapi';
 import { supabase } from '../../lib/supabase';
 
+// Hardcoded Supabase configuration for demo purposes
+// NOTE: In a production app, these should be stored securely, not hardcoded
+export const SUPABASE_URL = 'https://ibwjjwzomoyhkxugmmmw.supabase.co';
+export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlid2pqd3pvbW95aGt4dWdtbW13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ4NzkwODgsImV4cCI6MjA2MDQ1NTA4OH0.RmnNBQh_1KJo0TgCjs72aBoxWoOsd_vWjNeIHRfVXac';
+
 type RootStackParamList = {
   Chat: { id: string; name: string };
   ChatHistory: undefined;
@@ -58,7 +63,7 @@ const NewChatScreen = () => {
       const userMessage = message.trim();
       
       const groqResponse = await processWithGroq({
-        userId: user.id, // Add the missing userId property
+        userId: user.id,
         message: userMessage,
         chatId: 'new', // Placeholder ID since we don't have one yet
         chatName: title,

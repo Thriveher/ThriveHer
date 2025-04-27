@@ -15,9 +15,9 @@ export interface Chat {
   updatedAt?: string;
 }
 
-// Initialize Supabase client using Expo environment variables
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+// Initialize Supabase client with hardcoded credentials for demo project
+const supabaseUrl = 'https://ibwjjwzomoyhkxugmmmw.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlid2pqd3pvbW95aGt4dWdtbW13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ4NzkwODgsImV4cCI6MjA2MDQ1NTA4OH0.RmnNBQh_1KJo0TgCjs72aBoxWoOsd_vWjNeIHRfVXac';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Initialize Groq API configuration

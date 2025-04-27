@@ -22,6 +22,13 @@ import MessageBubble from '../components/chatbubble';
 import { fetchChatMessages, sendMessage } from '../api/chatapi';
 import { processWithGroq } from '../api/groqapi'; 
 import { StatusBar } from 'expo-status-bar';
+import * as Google from 'expo-auth-session/providers/google';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Hardcoded Supabase credentials
+const SUPABASE_URL = 'https://ibwjjwzomoyhkxugmmmw.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlid2pqd3pvbW95aGt4dWdtbW13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ4NzkwODgsImV4cCI6MjA2MDQ1NTA4OH0.RmnNBQh_1KJo0TgCjs72aBoxWoOsd_vWjNeIHRfVXac';
+const FALLBACK_USER_ID = 'demo-user-123'; // Fallback user ID for the demo
 
 // Types
 export interface Message {
@@ -37,6 +44,15 @@ export interface Message {
 interface CommandSuggestion {
   command: string;
   description: string;
+}
+
+// Define the correct interface for Groq request
+interface GroqRequestParams {
+  message: string;
+  chatId: string;
+  chatName: string;
+  context: string;
+  userId: string;
 }
 
 const COMMANDS: CommandSuggestion[] = [
@@ -57,9 +73,31 @@ const ChatScreen = () => {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [jobDetailsModalVisible, setJobDetailsModalVisible] = useState<boolean>(false);
   const [selectedJobDetails, setSelectedJobDetails] = useState<any>(null);
+  const [userId, setUserId] = useState<string>(FALLBACK_USER_ID);
   
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
+
+  // Get Google user ID from session
+  useEffect(() => {
+    const getUserInfo = async () => {
+      try {
+        // Try to get Google user ID from AsyncStorage
+        const googleUserInfo = await AsyncStorage.getItem('googleUserInfo');
+        if (googleUserInfo) {
+          const userInfo = JSON.parse(googleUserInfo);
+          if (userInfo.id) {
+            setUserId(userInfo.id);
+          }
+        }
+      } catch (error) {
+        console.log('Error retrieving Google user info:', error);
+        // Fall back to demo user ID
+      }
+    };
+    
+    getUserInfo();
+  }, []);
 
   useEffect(() => {
     if (chatId) {
@@ -82,6 +120,7 @@ const ChatScreen = () => {
   const loadChatMessages = async () => {
     try {
       setLoading(true);
+      // Pass only the chatId to fetchChatMessages (fix for error #1)
       const { messages: chatMessages, context: chatContext } = await fetchChatMessages(chatId);
       
       // Process messages to flag job search commands
@@ -132,20 +171,25 @@ const ChatScreen = () => {
     setSending(true);
     
     try {
-      // Process with Groq API
+      // Process with Groq API using correct parameters (fix for error #2)
       const groqResponse = await processWithGroq({
         message: userMessage,
         chatId,
         chatName: decodeURIComponent(chatName),
         context,
-        userId: 'current-user-id', // You'll need to replace this with actual user ID management
+        userId // Using the Google user ID if available
       });
       
       // Add bot response to messages
       const { botResponse, updatedContext } = groqResponse;
       
-      // Save both messages to the database
-      await sendMessage(chatId, userMessage, botResponse, updatedContext);
+      // Save both messages to the database with correct parameters (fix for error #3)
+      await sendMessage(
+        chatId, 
+        userMessage, 
+        botResponse, 
+        updatedContext
+      );
       
       // Check if this is a job search response and parse job data
       let jobData: any[] | undefined = undefined;
