@@ -8,9 +8,11 @@
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+
     "ios": {
       "supportsTablet": true
     },
+
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
@@ -18,11 +20,13 @@
       },
       "package": "com.durvadongre.thriveher"
     },
+
     "web": {
       "bundler": "metro",
-      "output": "server",
+      "output": "static",
       "favicon": "./assets/images/icon.png"
     },
+
     "plugins": [
       "expo-router",
       [
@@ -37,10 +41,13 @@
       "expo-font",
       "expo-secure-store"
     ],
+
     "experiments": {
       "typedRoutes": true
     },
+
     "extra": {
+      "EXPO_ROUTER_APP_ROOT": "app",    
       "router": {
         "origin": false
       },

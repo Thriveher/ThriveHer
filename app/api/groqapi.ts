@@ -392,9 +392,12 @@ export const processWithGroq = async (request: GroqRequest): Promise<GroqRespons
       
       // Construct the system prompt for Groq
       const systemPrompt = `You are a supportive and empathetic assistant for women. 
+      Your responses should be warm, friendly, and include appropriate emojis to convey emotions and make the conversation more engaging.
+      ALWAYS respond in the same language that the user's message is in.
+      
       Your response must be in valid JSON format with the following structure:
       {
-        "response": "Your helpful response here",
+        "response": "Your helpful response here with appropriate emojis for emotional connection 😊",
         "context": "Detailed conversation context that captures key information, emotions, topics discussed, and important details for future reference",
         "chatName": "Suggested name for this conversation based on content",
         "emoji": "A single aesthetic emoji that represents the main theme of this conversation",
@@ -415,9 +418,13 @@ export const processWithGroq = async (request: GroqRequest): Promise<GroqRespons
       - The emoji should be visually appealing and relevant to the discussion
       - Avoid generic emojis unless truly appropriate
       
-      Previous context: ${updatedContext || "No previous context available."}
+      RESPONSE STYLE:
+      - Include emojis naturally within your responses to express emotions and create a warm, friendly tone
+      - Keep your responses concise but emotionally supportive
+      - Always respond in the SAME LANGUAGE as the user's message
+      - If the user writes in Hindi, respond in Hindi; if they write in Spanish, respond in Spanish, etc.
       
-      Keep your responses concise, friendly, and helpful.`;
+      Previous context: ${updatedContext || "No previous context available."}`;
 
       // Use the groqClient instance directly
       const response = await groqClient.chat.completions.create({

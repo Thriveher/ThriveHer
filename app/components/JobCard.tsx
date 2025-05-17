@@ -4,9 +4,13 @@ import { MaterialIcons } from '@expo/vector-icons';
 
 interface CommandSuggestionsProps {
   onSelectCommand: (command: string) => void;
+  onExampleClick?: (fullCommand: string) => void; // New prop for handling example clicks
 }
 
-const CommandSuggestions: React.FC<CommandSuggestionsProps> = ({ onSelectCommand }) => {
+const CommandSuggestions: React.FC<CommandSuggestionsProps> = ({ 
+  onSelectCommand, 
+  onExampleClick = (fullCommand) => onSelectCommand(fullCommand) // Default behavior
+}) => {
   const commands = [
     {
       command: '/job',
@@ -23,7 +27,7 @@ const CommandSuggestions: React.FC<CommandSuggestionsProps> = ({ onSelectCommand
     {
       command: '/salary',
       description: 'Get salary information for a job role',
-      icon: 'attach-money', // Changed from 'payments' to 'attach-money' which is a valid MaterialIcons name
+      icon: 'attach-money',
       examples: ['software engineer', 'marketing manager in New York']
     }
   ];
@@ -38,7 +42,7 @@ const CommandSuggestions: React.FC<CommandSuggestionsProps> = ({ onSelectCommand
             onPress={() => onSelectCommand(item.command)}
           >
             <MaterialIcons 
-              name={item.icon as any} // Using type assertion here as a temporary fix
+              name={item.icon as any}
               size={24} 
               color="#49654E" 
               style={styles.commandIcon} 
@@ -46,13 +50,26 @@ const CommandSuggestions: React.FC<CommandSuggestionsProps> = ({ onSelectCommand
             <View style={styles.commandTextContainer}>
               <Text style={styles.commandText}>{item.command}</Text>
               <Text style={styles.commandDescription}>{item.description}</Text>
-              <Text style={styles.examplesText}>
-                Examples: {item.examples.map((example, i) => (
-                  <Text key={i} style={styles.exampleText}>
-                    {`${item.command} ${example}`}{i < item.examples.length - 1 ? ', ' : ''}
-                  </Text>
-                ))}
-              </Text>
+              <View style={styles.examplesContainer}>
+                <Text style={styles.examplesLabel}>Examples: </Text>
+                <View style={styles.exampleLinks}>
+                  {item.examples.map((example, i) => (
+                    <View key={i} style={styles.exampleLinkWrapper}>
+                      <TouchableOpacity
+                        onPress={() => onExampleClick(`${item.command} ${example}`)}
+                        style={styles.exampleLink}
+                      >
+                        <Text style={styles.exampleText}>
+                          {`${item.command} ${example}`}
+                        </Text>
+                      </TouchableOpacity>
+                      {i < item.examples.length - 1 && (
+                        <Text style={styles.examplesSeparator}>, </Text>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              </View>
             </View>
           </TouchableOpacity>
         ))}
@@ -64,7 +81,7 @@ const CommandSuggestions: React.FC<CommandSuggestionsProps> = ({ onSelectCommand
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 70, // Position above the input container
+    bottom: 70,
     left: 0,
     right: 0,
     backgroundColor: '#FFFFFF',
@@ -107,14 +124,35 @@ const styles = StyleSheet.create({
     color: '#49654E',
     marginBottom: 4,
   },
-  examplesText: {
+  examplesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  examplesLabel: {
     fontSize: 12,
     color: '#666666',
     fontStyle: 'italic',
   },
+  exampleLinks: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  exampleLinkWrapper: {
+    flexDirection: 'row',
+  },
+  exampleLink: {
+    // Interactive styling for the example links
+    paddingVertical: 2,
+  },
   exampleText: {
     fontSize: 12,
     color: '#49654E',
+    textDecorationLine: 'underline',
+  },
+  examplesSeparator: {
+    fontSize: 12,
+    color: '#666666',
   },
 });
 

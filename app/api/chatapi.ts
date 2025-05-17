@@ -1,10 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Hardcoded Supabase URL and key for demo project
+// Configuration for Supabase connection
 const supabaseUrl = "https://ibwjjwzomoyhkxugmmmw.supabase.co";
 const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlid2pqd3pvbW95aGt4dWdtbW13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ4NzkwODgsImV4cCI6MjA2MDQ1NTA4OH0.RmnNBQh_1KJo0TgCjs72aBoxWoOsd_vWjNeIHRfVXac";
 
-// Create Supabase client with hardcoded values
+// Initialize Supabase client
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
 import { Message } from '../chat/[id]';
@@ -14,9 +14,14 @@ interface ChatData {
   context: string | null;
 }
 
+/**
+ * Fetches all messages for a specific chat
+ * @param chatId - The ID of the chat to fetch messages for
+ * @returns Promise with chat messages and context
+ */
 export const fetchChatMessages = async (chatId: string): Promise<ChatData> => {
   try {
-    // Fetch messages for the chat
+    // Fetch messages sorted by timestamp
     const { data: messagesData, error: messagesError } = await supabase
       .from('messages')
       .select('*')
@@ -25,15 +30,15 @@ export const fetchChatMessages = async (chatId: string): Promise<ChatData> => {
     
     if (messagesError) throw messagesError;
     
-    // Fetch context for the chat
+    // Fetch associated context
     const { data: contextData, error: contextError } = await supabase
       .from('chat_contexts')
       .select('context')
       .eq('chat_id', chatId)
       .single();
     
+    // PGRST116 = "no rows returned" - this is acceptable
     if (contextError && contextError.code !== 'PGRST116') {
-      // PGRST116 is the error code for "no rows returned" which is fine
       throw contextError;
     }
     
@@ -47,6 +52,13 @@ export const fetchChatMessages = async (chatId: string): Promise<ChatData> => {
   }
 };
 
+/**
+ * Sends a message pair (user message + bot response) to the database
+ * @param chatId - The chat ID
+ * @param userMessage - User's message text
+ * @param botResponse - Bot's response text (can include emojis 😀🤖💬)
+ * @param context - Current conversation context
+ */
 export const sendMessage = async (
   chatId: string,
   userMessage: string,
@@ -54,7 +66,7 @@ export const sendMessage = async (
   context: string
 ): Promise<void> => {
   try {
-    // Call the stored procedure to add message pair with corrected parameter order
+    // Add message pair using stored procedure
     const { error } = await supabase.rpc('add_message_pair', {
       p_bot_response: botResponse,
       p_chat_id: chatId,
@@ -63,7 +75,7 @@ export const sendMessage = async (
     
     if (error) throw error;
     
-    // Update the context
+    // Update conversation context with timestamp
     const { error: contextError } = await supabase
       .from('chat_contexts')
       .upsert(
@@ -82,13 +94,23 @@ export const sendMessage = async (
   }
 };
 
+/**
+ * Creates a new chat with initial message and response
+ * @param userId - User's ID
+ * @param title - Chat title
+ * @param userMessage - Initial user message
+ * @param botResponse - Initial bot response (include emojis like 👋 🤖 ✨)
+ * @param context - Initial context
+ * @param emoji - Chat emoji identifier
+ * @returns Promise with new chat ID
+ */
 export const createNewChatWithMessage = async (
   userId: string,
   title: string,
   userMessage: string,
   botResponse: string,
   context: string,
-  emoji: string = '💬'  // Added emoji parameter with default value
+  emoji: string = '💬'  // Default chat emoji
 ): Promise<string> => {
   try {
     const { data, error } = await supabase.rpc('create_chat_with_messages', {
@@ -97,7 +119,7 @@ export const createNewChatWithMessage = async (
       p_user_message: userMessage,
       p_bot_response: botResponse,
       p_context: context,
-      p_emoji: emoji  // Pass emoji to the stored procedure
+      p_emoji: emoji
     });
     
     if (error) {
@@ -105,7 +127,7 @@ export const createNewChatWithMessage = async (
       throw error;
     }
     
-    return data; // This should return the new chat_id
+    return data; // Returns the new chat_id
   } catch (error) {
     console.error('Error in createNewChatWithMessage:', error);
     throw error;

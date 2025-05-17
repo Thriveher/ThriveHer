@@ -259,6 +259,16 @@ const ChatScreen = () => {
     }
   };
 
+  // Handle key press for Enter key to send message
+  const handleKeyPress = (e) => {
+    if (e.nativeEvent.key === 'Enter' && !e.nativeEvent.shiftKey) {
+      e.preventDefault(); // Prevent default to avoid new line
+      if (inputText.trim() && !sending) {
+        handleSendMessage();
+      }
+    }
+  };
+
   const handleCommandSelect = (command: string) => {
     setInputText(command + ' ');
     setShowCommands(false);
@@ -294,6 +304,8 @@ const ChatScreen = () => {
       Linking.openURL(url).catch(err => 
         Alert.alert('Error', 'Could not open the application link')
       );
+    } else {
+      Alert.alert('Info', 'Application link is not available');
     }
   };
 
@@ -336,6 +348,7 @@ const ChatScreen = () => {
       <TouchableOpacity 
         style={styles.jobApplyButton}
         onPress={() => openJobApplication(job.applyLink)}
+        activeOpacity={0.7} // Add feedback when pressed
       >
         <Text style={styles.jobApplyText}>Apply</Text>
       </TouchableOpacity>
@@ -443,6 +456,7 @@ const ChatScreen = () => {
             placeholderTextColor="#49654E80"
             value={inputText}
             onChangeText={setInputText}
+            onKeyPress={handleKeyPress}
             multiline
             maxLength={2000}
           />
@@ -453,6 +467,7 @@ const ChatScreen = () => {
             ]}
             onPress={handleSendMessage}
             disabled={!inputText.trim() || sending}
+            activeOpacity={0.7} // Add feedback when pressed
           >
             {sending ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
@@ -510,11 +525,11 @@ const ChatScreen = () => {
               <TouchableOpacity 
                 style={styles.applyButtonLarge}
                 onPress={() => {
-                  setJobDetailsModalVisible(false);
                   if (selectedJobDetails?.applyLink) {
                     openJobApplication(selectedJobDetails.applyLink);
                   }
                 }}
+                activeOpacity={0.7} // Add feedback when pressed
               >
                 <Text style={styles.applyButtonText}>Apply Now</Text>
               </TouchableOpacity>

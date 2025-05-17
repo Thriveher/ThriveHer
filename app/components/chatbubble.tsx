@@ -1,15 +1,23 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Linking } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 
+// Interface aligned perfectly with the API structure
 interface JobData {
-  id: string;
-  title: string;
-  company: string;
-  location: string;
-  salary: string;
-  applyLink: string;
-  logoUrl: string;
+  job_id: string;
+  job_title: string;
+  employer_name: string;
+  employer_logo: string | null;
+  job_city: string | null;
+  job_state: string | null;
+  job_country: string | null;
+  job_apply_link: string;
+  job_employment_type: string | null;
+  job_salary_currency: string | null;
+  job_salary_min: number | null;
+  job_salary_max: number | null;
+  job_salary_period: string | null;
+  experience_level?: string;
 }
 
 interface MessageBubbleProps {
@@ -21,14 +29,49 @@ interface MessageBubbleProps {
   onJobCardPress?: (jobId: string) => void;
 }
 
-const MessageBubble = ({ 
-  message, 
-  isUser, 
-  timestamp, 
-  jobData, 
-  isJobSearch, 
-  onJobCardPress 
+const MessageBubble = ({
+  message,
+  isUser,
+  timestamp,
+  jobData,
+  isJobSearch,
+  onJobCardPress
 }: MessageBubbleProps) => {
+  
+  // Safe function to open URLs
+  const openJobLink = (url: string) => {
+    if (!url) return;
+    
+    // Validate URL format
+    try {
+      const validUrl = url.startsWith('http') ? url : `https://${url}`;
+      Linking.canOpenURL(validUrl).then(supported => {
+        if (supported) {
+          Linking.openURL(validUrl);
+        } else {
+          console.log("Cannot open URL: " + validUrl);
+        }
+      }).catch(err => console.error('Error checking link:', err));
+    } catch (error) {
+      console.error('Invalid URL format:', error);
+    }
+  };
+  
+  // Format salary range safely
+  const formatSalary = (job: JobData): string => {
+    if (job.job_salary_min && job.job_salary_max) {
+      const currency = job.job_salary_currency || '$';
+      const period = job.job_salary_period ? ` per ${job.job_salary_period}` : '';
+      return `${currency}${job.job_salary_min.toLocaleString()}-${job.job_salary_max.toLocaleString()}${period}`;
+    }
+    return 'Salary not specified';
+  };
+  
+  // Format location safely
+  const formatLocation = (job: JobData): string => {
+    const locationParts = [job.job_city, job.job_state, job.job_country].filter(Boolean);
+    return locationParts.length > 0 ? locationParts.join(', ') : 'Remote/Unspecified';
+  };
   
   // If this is a job search response from the bot, render job cards
   if (!isUser && isJobSearch && jobData && jobData.length > 0) {
@@ -36,45 +79,70 @@ const MessageBubble = ({
       <View style={styles.jobCardsContainer}>
         <Text style={styles.jobResultsTitle}>Job Search Results</Text>
         {jobData.map(job => (
-          <TouchableOpacity 
+          <View 
             style={styles.jobCard}
-            onPress={() => onJobCardPress && onJobCardPress(job.id)}
-            key={job.id}
+            key={job.job_id}
           >
             <View style={styles.jobCardHeader}>
               <View style={styles.logoContainer}>
-                <Image
-                  source={{ uri: job.logoUrl }}
-                  style={styles.companyLogo}
-                  defaultSource={require('../../assets/images/placeholder-logo.jpeg')}
-                  onError={(e) => console.log('Error loading logo', e.nativeEvent.error)}
-                />
+                {job.employer_logo ? (
+                  <Image
+                    source={{ uri: job.employer_logo }}
+                    style={styles.companyLogo}
+                    defaultSource={require('../../assets/images/placeholder-logo.jpeg')}
+                  />
+                ) : (
+                  <View style={styles.placeholderLogo}>
+                    <Text style={styles.placeholderText}>
+                      {job.employer_name.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                )}
               </View>
               <View style={styles.jobTitleContainer}>
-                <Text style={styles.jobTitle} numberOfLines={1}>{job.title}</Text>
-                <Text style={styles.jobCompany} numberOfLines={1}>{job.company}</Text>
+                <Text style={styles.jobTitle} numberOfLines={1}>{job.job_title}</Text>
+                <Text style={styles.jobCompany} numberOfLines={1}>{job.employer_name}</Text>
               </View>
             </View>
+            
             <View style={styles.jobCardDetails}>
               <View style={styles.jobCardRow}>
                 <Feather name="map-pin" size={14} color="#49654E" />
-                <Text style={styles.jobLocation} numberOfLines={1}>{job.location}</Text>
+                <Text style={styles.jobLocation} numberOfLines={1}>{formatLocation(job)}</Text>
               </View>
               <View style={styles.jobCardRow}>
                 <Feather name="dollar-sign" size={14} color="#49654E" />
-                <Text style={styles.jobSalary} numberOfLines={1}>{job.salary}</Text>
+                <Text style={styles.jobSalary} numberOfLines={1}>{formatSalary(job)}</Text>
               </View>
+              {job.job_employment_type && (
+                <View style={styles.jobCardRow}>
+                  <Feather name="briefcase" size={14} color="#49654E" />
+                  <Text style={styles.jobType} numberOfLines={1}>{job.job_employment_type}</Text>
+                </View>
+              )}
+              {job.experience_level && (
+                <View style={styles.jobCardRow}>
+                  <Feather name="award" size={14} color="#49654E" />
+                  <Text style={styles.jobExperience} numberOfLines={1}>{job.experience_level}</Text>
+                </View>
+              )}
             </View>
-            <TouchableOpacity 
-              style={styles.jobApplyButton}
-              onPress={() => {
-                // This would be handled by parent component
-                if (onJobCardPress) onJobCardPress(job.id);
-              }}
-            >
-              <Text style={styles.jobApplyText}>Apply</Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
+            
+            <View style={styles.buttonContainer}>
+              <TouchableOpacity 
+                style={styles.jobViewButton}
+                onPress={() => onJobCardPress && onJobCardPress(job.job_id)}
+              >
+                <Text style={styles.jobViewText}>View Details</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.jobApplyButton}
+                onPress={() => openJobLink(job.job_apply_link)}
+              >
+                <Text style={styles.jobApplyText}>Apply Now</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         ))}
       </View>
     );
@@ -209,6 +277,19 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 8,
   },
+  placeholderLogo: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: '#49654E',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  placeholderText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
   jobTitleContainer: {
     flex: 1,
   },
@@ -240,7 +321,35 @@ const styles = StyleSheet.create({
     color: '#666666',
     marginLeft: 6,
   },
+  jobType: {
+    fontSize: 14,
+    color: '#666666',
+    marginLeft: 6,
+  },
+  jobExperience: {
+    fontSize: 14,
+    color: '#666666',
+    marginLeft: 6,
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  jobViewButton: {
+    flex: 1,
+    backgroundColor: '#F0F4F0',
+    borderRadius: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  jobViewText: {
+    color: '#49654E',
+    fontWeight: '600',
+    fontSize: 14,
+  },
   jobApplyButton: {
+    flex: 1,
     backgroundColor: '#8BA889',
     borderRadius: 8,
     paddingVertical: 8,
