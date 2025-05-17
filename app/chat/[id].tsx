@@ -214,7 +214,7 @@ const ChatScreen = () => {
                 company: titleMatch ? titleMatch[2] : 'Unknown company',
                 location: locationMatch ? locationMatch[1] : 'Unknown location',
                 salary: salary,
-                applyLink: linkMatch ? linkMatch[1] : '#',
+                applyLink: linkMatch ? linkMatch[1].trim() : '#', // Ensure the link is trimmed
                 id: `job-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
                 logoUrl: `https://logo.clearbit.com/${titleMatch ? titleMatch[2].toLowerCase().replace(/\s+/g, '') : 'company'}.com`, // Generate logo URL
               };
@@ -286,8 +286,7 @@ const ChatScreen = () => {
 
   const handleJobCardPress = (jobId: string) => {
     setSelectedJobId(jobId);
-    // In a real app, you'd fetch the job details here
-    // For now, we'll simulate it with the job data we already have
+    // Find the job details from all job data
     const allJobs = messages
       .filter(msg => msg.jobData)
       .flatMap(msg => msg.jobData || []);
@@ -300,13 +299,27 @@ const ChatScreen = () => {
   };
 
   const openJobApplication = (url: string) => {
-    if (url && url !== '#') {
-      Linking.openURL(url).catch(err => 
-        Alert.alert('Error', 'Could not open the application link')
-      );
-    } else {
+    if (!url || url === '#') {
       Alert.alert('Info', 'Application link is not available');
+      return;
     }
+    
+    // Check if the URL starts with http or https
+    const formattedUrl = url.startsWith('http') ? url : `https://${url}`;
+    
+    // Use Linking API to open the URL
+    Linking.canOpenURL(formattedUrl)
+      .then(supported => {
+        if (supported) {
+          return Linking.openURL(formattedUrl);
+        } else {
+          Alert.alert('Error', `Cannot open URL: ${formattedUrl}`);
+        }
+      })
+      .catch(err => {
+        console.error('Error opening URL:', err);
+        Alert.alert('Error', 'Could not open the application link');
+      });
   };
 
   const renderCompanyLogo = (logoUrl: string) => {
@@ -345,12 +358,13 @@ const ChatScreen = () => {
           <Text style={styles.jobSalary} numberOfLines={1}>{job.salary}</Text>
         </View>
       </View>
+      {/* Updated Apply Button - Make it more prominent and handle press directly */}
       <TouchableOpacity 
         style={styles.jobApplyButton}
         onPress={() => openJobApplication(job.applyLink)}
-        activeOpacity={0.7} // Add feedback when pressed
+        activeOpacity={0.7}
       >
-        <Text style={styles.jobApplyText}>Apply</Text>
+        <Text style={styles.jobApplyText}>Apply Now</Text>
       </TouchableOpacity>
     </TouchableOpacity>
   );
@@ -478,7 +492,7 @@ const ChatScreen = () => {
         </View>
       </KeyboardAvoidingView>
 
-      {/* Job Details Modal */}
+      {/* Job Details Modal - Updated to improve Apply button */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -522,15 +536,21 @@ const ChatScreen = () => {
                 <Text style={styles.detailText}>{selectedJobDetails?.salary}</Text>
               </View>
               
+              {/* Enhanced Apply Now button with better feedback */}
               <TouchableOpacity 
                 style={styles.applyButtonLarge}
                 onPress={() => {
-                  if (selectedJobDetails?.applyLink) {
-                    openJobApplication(selectedJobDetails.applyLink);
-                  }
+                  // Close the modal then open the application link
+                  setJobDetailsModalVisible(false);
+                  setTimeout(() => {
+                    if (selectedJobDetails?.applyLink) {
+                      openJobApplication(selectedJobDetails.applyLink);
+                    }
+                  }, 300); // Short delay to allow modal close animation
                 }}
-                activeOpacity={0.7} // Add feedback when pressed
+                activeOpacity={0.6}
               >
+                <Feather name="external-link" size={18} color="#FFFFFF" style={styles.applyButtonIcon} />
                 <Text style={styles.applyButtonText}>Apply Now</Text>
               </TouchableOpacity>
             </View>
@@ -540,6 +560,7 @@ const ChatScreen = () => {
     </SafeAreaView>
   );
 };
+
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -816,5 +837,53 @@ const styles = StyleSheet.create({
     color: '#666666',
   },
 });
+
+
+// Add these styles to your styles.ts file
+const additionalStyles = {
+  jobCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  jobApplyButton: {
+    backgroundColor: '#49654E',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  jobApplyText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  applyButtonLarge: {
+    backgroundColor: '#49654E',
+    paddingVertical: 12, 
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 24,
+    marginBottom: 8,
+  },
+  applyButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  applyButtonIcon: {
+    marginRight: 8,
+  },
+};
 
 export default ChatScreen;

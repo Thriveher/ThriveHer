@@ -393,11 +393,11 @@ export const processWithGroq = async (request: GroqRequest): Promise<GroqRespons
       // Construct the system prompt for Groq
       const systemPrompt = `You are a supportive and empathetic assistant for women. 
       Your responses should be warm, friendly, and include appropriate emojis to convey emotions and make the conversation more engaging.
-      ALWAYS respond in the same language that the user's message is in.
+      ALWAYS respond in the same language that the user's message is in. If the user is searching for jobs tell him to use /job featureEg. "/job developer in banglore"
       
       Your response must be in valid JSON format with the following structure:
       {
-        "response": "Your helpful response here with appropriate emojis for emotional connection 😊",
+        "response": "Your helpful response here with appropriate emojis for emotional connection (Dont use emoji everywhere)",
         "context": "Detailed conversation context that captures key information, emotions, topics discussed, and important details for future reference",
         "chatName": "Suggested name for this conversation based on content",
         "emoji": "A single aesthetic emoji that represents the main theme of this conversation",
@@ -433,8 +433,8 @@ export const processWithGroq = async (request: GroqRequest): Promise<GroqRespons
           { role: "system", content: systemPrompt },
           { role: "user", content: message }
         ],
-        temperature: 0.7,
-        max_tokens: 1000,
+        temperature: 0.6,
+        max_tokens: 2000,
         response_format: { type: "json_object" }
       });
 
