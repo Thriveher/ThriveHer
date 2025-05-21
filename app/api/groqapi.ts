@@ -1,25 +1,23 @@
 import Constants from 'expo-constants';
 import { createClient } from '@supabase/supabase-js';
-// Import uuid but don't redeclare types
 import { v4 as uuidv4 } from 'uuid';
-import { searchJobs, getJobDetails, getJobSalaries } from '../api/getjobsforchat';
 import Groq from 'groq-sdk';
- 
+
 interface GroqRequest {
   message: string;
-  chatId?: string; // Optional for new chats
+  chatId?: string;
   userId: string;
-  chatName?: string; // Optional for new chats
-  context?: string; // Optional for new chats
-  emoji?: string; // Optional emoji
+  chatName?: string;
+  context?: string;
+  emoji?: string;
 }
 
 interface GroqResponse {
   botResponse: string;
-  updatedContext: string; // Non-optional
+  updatedContext: string;
   chatId: string;
-  chatName: string; // Non-optional
-  emoji: string; // Non-optional
+  chatName: string;
+  emoji: string;
   timestamp: string;
 }
 
@@ -43,283 +41,142 @@ const groqApiKey = process.env.EXPO_PUBLIC_GROQ_API_KEY || Constants.expoConfig?
 // Initialize Groq client
 const groqClient = new Groq({ 
   apiKey: groqApiKey,
-  dangerouslyAllowBrowser: true // Add this flag to allow browser usage
+  dangerouslyAllowBrowser: true
 });
 
-/**
- * Validates API keys are available
- * @returns boolean indicating if API keys are set
- */
-const validateApiKeys = (): boolean => {
-  let isValid = true;
-  
-  if (!groqApiKey) {
-    console.error('Groq API key is not configured');
-    isValid = false;
-  }
-  
-  return isValid;
+// Base API configuration for job search
+const API_BASE_URL = 'https://jsearch.p.rapidapi.com';
+const API_KEY = '3fe4222f05mshee7786231fb68c8p1cae9bjsnaeb6f8469718';
+const API_HOST = 'jsearch.p.rapidapi.com';
+
+const getRequestOptions = (): RequestInit => {
+  return {
+    method: 'GET',
+    headers: {
+      'x-rapidapi-key': API_KEY,
+      'x-rapidapi-host': API_HOST
+    }
+  };
 };
 
-/**
- * Perform job search using the API from the first file
- * @param message User's message text
- * @returns Analysis of job results
- */
-const performJobSearch = async (message: string): Promise<{
-  analysis: string, 
-  jobData: any[]
-}> => {
-  try {
-    // Simply remove the "/job" command from the message and use as query
-    const query = message.replace(/\/job/i, '').trim();
-    
-    // Call the searchJobs function directly from the imported API
-    const searchParams: JobSearchParams = {
-      query: query,
-      numPages: 1,
-      country: 'in', // Default to India, can be made configurable
-      datePosted: 'all',
-      language: 'en'
-    };
-    
-    const jobResults = await searchJobs(searchParams);
-
-    if (!jobResults.data || jobResults.data.length === 0) {
-      return {
-        analysis: `I couldn't find any jobs matching "${query}". Try modifying your search terms.`,
-        jobData: []
-      };
+const buildUrl = (endpoint: string, params: Record<string, string | number | undefined>): string => {
+  const url = new URL(`${API_BASE_URL}${endpoint}`);
+  
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined) {
+      url.searchParams.append(key, String(value));
     }
+  });
+  
+  return url.toString();
+};
 
-    // Format a response with the top 5 jobs
-    const topJobs = jobResults.data.slice(0, 5);
-    let analysis = `Here are the top results for "${query}":\n\n`;
-    
-    topJobs.forEach((job, index) => {
-      const location = [job.job_city, job.job_state, job.job_country].filter(Boolean).join(', ');
-      const salary = job.job_salary_min && job.job_salary_max 
-        ? `${job.job_salary_currency || '₹'}${job.job_salary_min}-${job.job_salary_max} ${job.job_salary_period || 'yearly'}`
-        : 'Not specified';
-      
-      analysis += `${index + 1}. ${job.job_title} at ${job.employer_name}\n`;
-      analysis += `   Location: ${location}\n`;
-      analysis += `   Salary: ${salary}\n`;
-      
-      // Include skills if available from the LLM processing
-      if (job.skills && job.skills.length > 0) {
-        analysis += `   Skills: ${job.skills.slice(0, 3).join(', ')}${job.skills.length > 3 ? '...' : ''}\n`;
-      }
-      
-      // Include experience level if available
-      if (job.experience_level && job.experience_level !== 'not specified') {
-        analysis += `   Level: ${job.experience_level}\n`;
-      }
-      
-      analysis += `   Apply: ${job.job_apply_link}\n\n`;
+const searchJobs = async (params: JobSearchParams) => {
+  try {
+    const url = buildUrl('/search', {
+      query: params.query,
+      page: params.page || 1,
+      num_pages: params.numPages || 1,
+      country: params.country || 'in',
+      date_posted: params.datePosted || 'all',
+      language: params.language || 'en'
     });
-
-    analysis += `Found ${jobResults.data.length} total results.`;
-
-    return {
-      analysis,
-      jobData: jobResults.data
-    };
+    
+    const options = getRequestOptions();
+    const response = await fetch(url, options);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error ${response.status}`);
+    }
+    
+    return await response.json();
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("Error searching for jobs:", errorMessage);
-    return {
-      analysis: "I encountered an error while searching for jobs. Please try again.",
-      jobData: []
-    };
-  }
-};
-
-/**
- * Process a job detail request
- * @param jobId The ID of the job to get details for
- * @returns Formatted job details
- */
-const getJobDetailsAnalysis = async (jobId: string): Promise<{
-  analysis: string,
-  jobData: any
-}> => {
-  try {
-    const jobResult = await getJobDetails(jobId);
-    
-    if (!jobResult.data || jobResult.data.length === 0) {
-      return {
-        analysis: `I couldn't find details for job ID: ${jobId}.`,
-        jobData: null
-      };
-    }
-    
-    const job = jobResult.data[0];
-    let analysis = `# ${job.job_title} at ${job.employer_name}\n\n`;
-    
-    // Location
-    const location = [job.job_city, job.job_state, job.job_country].filter(Boolean).join(', ');
-    analysis += `**Location**: ${location}\n\n`;
-    
-    // Salary if available
-    if (job.job_salary_min && job.job_salary_max) {
-      analysis += `**Salary**: ${job.job_salary_currency || '$'}${job.job_salary_min}-${job.job_salary_max} ${job.job_salary_period || 'yearly'}\n\n`;
-    }
-    
-    // Employment type
-    analysis += `**Employment Type**: ${job.job_employment_type}\n\n`;
-    
-    // Skills section from LLM processing
-    if (job.skills && job.skills.length > 0) {
-      analysis += `**Skills Required**:\n`;
-      job.skills.forEach((skill: string) => {
-        analysis += `- ${skill}\n`;
-      });
-      analysis += '\n';
-    }
-    
-    // Experience level from LLM processing
-    if (job.experience_level && job.experience_level !== 'not specified') {
-      analysis += `**Experience Level**: ${job.experience_level}\n\n`;
-    }
-    
-    // Industry from LLM processing
-    if (job.industry && job.industry !== 'not specified') {
-      analysis += `**Industry**: ${job.industry}\n\n`;
-    }
-    
-    // Full description
-    analysis += `## Job Description\n\n${job.job_description || 'No description provided.'}\n\n`;
-    
-    // Application link
-    analysis += `**Apply**: [Application Link](${job.job_apply_link})\n\n`;
-    
-    // If apply options are available
-    if (job.apply_options && job.apply_options.length > 0) {
-      analysis += `**Other Application Options**:\n`;
-      job.apply_options.forEach((option: any) => {
-        analysis += `- ${option.publisher}: ${option.is_direct ? 'Direct application' : 'External site'}\n`;
-      });
-    }
-    
-    return {
-      analysis,
-      jobData: job
-    };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("Error getting job details:", errorMessage);
-    return {
-      analysis: "I encountered an error while fetching job details. Please try again.",
-      jobData: null
-    };
-  }
-};
-
-/**
- * Process a salary information request
- * @param jobTitle The job title to get salary data for
- * @param location Optional location for salary data
- * @returns Formatted salary analysis
- */
-const getSalaryAnalysis = async (jobTitle: string, location?: string): Promise<string> => {
-  try {
-    const salaryData = await getJobSalaries(jobTitle, location);
-    
-    if (!salaryData.data) {
-      return `I couldn't find salary information for ${jobTitle}${location ? ` in ${location}` : ''}.`;
-    }
-    
-    let analysis = `# Salary Information for ${jobTitle}${location ? ` in ${location}` : ''}\n\n`;
-    
-    // Basic salary range
-    if (salaryData.data.min_salary && salaryData.data.max_salary) {
-      analysis += `**Salary Range**: ${salaryData.data.currency || '$'}${salaryData.data.min_salary.toLocaleString()}-${salaryData.data.max_salary.toLocaleString()} ${salaryData.data.salary_period || 'yearly'}\n\n`;
-    }
-    
-    // Median salary
-    if (salaryData.data.median_salary) {
-      analysis += `**Median Salary**: ${salaryData.data.currency || '$'}${salaryData.data.median_salary.toLocaleString()}\n\n`;
-    }
-    
-    // Include any additional insights from LLM processing
-    if (salaryData.data.industry_comparisons) {
-      analysis += `## Industry Comparisons\n${salaryData.data.industry_comparisons}\n\n`;
-    }
-    
-    if (salaryData.data.experience_level_breakdowns) {
-      analysis += `## Experience Level Breakdown\n${salaryData.data.experience_level_breakdowns}\n\n`;
-    }
-    
-    if (salaryData.data.educational_requirements_impact) {
-      analysis += `## Impact of Education\n${salaryData.data.educational_requirements_impact}\n\n`;
-    }
-    
-    return analysis;
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("Error getting salary information:", errorMessage);
-    return "I encountered an error while fetching salary information. Please try again.";
+    console.error('Error in searchJobs:', error);
+    throw error;
   }
 };
 
 export const processWithGroq = async (request: GroqRequest): Promise<GroqResponse> => {
   try {
-    if (!validateApiKeys()) {
-      throw new Error('Required API keys not configured');
-    }
-    
     const { message, userId } = request;
     let { chatId, chatName, context, emoji } = request;
     const timestamp = new Date().toISOString();
     let generatedChatId = chatId || uuidv4();
     
-    // Parse command patterns
-    const isJobSearch = message.toLowerCase().startsWith('/job ') || message.toLowerCase() === '/job';
-    const isJobDetails = message.toLowerCase().match(/\/job-details\s+([a-zA-Z0-9-_]+)/);
-    const isSalaryInfo = message.toLowerCase().match(/\/salary\s+(.+?)(?:\s+in\s+(.+))?$/);
-    
-    let jobSearchResults = null;
-    let botResponse = "";
-    
-    // Initialize these with default values to avoid undefined
+    // Initialize with default values
     let updatedContext = context || "";
     let updatedChatName = chatName || "Conversation";
     let updatedEmoji = emoji || "💬";
+    let botResponse = "";
     
-    // Handle job-related commands
-    if (isJobSearch) {
-      // Perform job search
-      jobSearchResults = await performJobSearch(message);
-      botResponse = jobSearchResults.analysis;
+    // Check if message contains job search intent
+    const jobSearchRegex = /(?:find|search|looking for|job|work|career|position|employment|opening|vacancy|opportunities|hiring) (?:for|as|in) ([\w\s]+?)(?:\s+in\s+([a-zA-Z\s]+))?$/i;
+    const jobMatch = message.match(jobSearchRegex);
+    
+    if (message.toLowerCase().startsWith('/job ') || message.toLowerCase() === '/job' || jobMatch) {
+      // Extract job title and location
+      let jobTitle, location;
       
-      // Use job-related emoji and chat name for new job search chats
-      if (!chatId) {
-        updatedEmoji = emoji || '💼';
-        const cleanQuery = message.replace(/\/job/i, '').trim();
-        updatedChatName = chatName || `Job Search: ${cleanQuery.length > 25 ? cleanQuery.substring(0, 25) + '...' : cleanQuery}`;
+      if (message.toLowerCase().startsWith('/job ')) {
+        const query = message.replace(/\/job\s+/i, '').trim();
+        const parts = query.split(/\s+in\s+/i);
+        jobTitle = parts[0].trim();
+        location = parts.length > 1 ? parts[1].trim() : undefined;
+      } else if (jobMatch) {
+        jobTitle = jobMatch[1].trim();
+        location = jobMatch[2] ? jobMatch[2].trim() : undefined;
+      } else {
+        jobTitle = "";
+        location = undefined;
       }
-    } else if (isJobDetails) {
-      // Get job details for a specific job ID
-      const jobId = isJobDetails[1];
-      const jobDetails = await getJobDetailsAnalysis(jobId);
-      botResponse = jobDetails.analysis;
       
-      // Use job-details emoji and name for new chats
-      if (!chatId) {
-        updatedEmoji = emoji || '📋';
-        updatedChatName = chatName || `Job Details: ${jobDetails.jobData?.job_title || jobId}`;
-      }
-    } else if (isSalaryInfo) {
-      // Get salary information for a job title and optional location
-      const jobTitle = isSalaryInfo[1];
-      const location = isSalaryInfo[2];
-      botResponse = await getSalaryAnalysis(jobTitle, location);
+      // Construct query
+      const query = location ? `${jobTitle} in ${location}` : jobTitle;
       
-      // Use salary-related emoji and name for new chats
-      if (!chatId) {
-        updatedEmoji = emoji || '💰';
-        updatedChatName = chatName || `Salary Info: ${jobTitle}${location ? ` in ${location}` : ''}`;
+      // Search for jobs
+      try {
+        const jobResults = await searchJobs({
+          query: query,
+          numPages: 1,
+          country: 'in',
+          datePosted: 'all',
+          language: 'en'
+        });
+        
+        if (!jobResults.data || jobResults.data.length === 0) {
+          botResponse = `I couldn't find any jobs matching "${query}". Try modifying your search terms.`;
+        } else {
+          // Format response to directly show in chat
+          botResponse = `Here are some job opportunities I found for ${jobTitle}${location ? ` in ${location}` : ''}:\n\n`;
+          
+          // Add top job results
+          const topJobs = jobResults.data.slice(0, 5);
+          
+          topJobs.forEach((job, index) => {
+            const location = [job.job_city, job.job_state, job.job_country].filter(Boolean).join(', ');
+            
+            botResponse += `${index + 1}. ${job.job_title} at ${job.employer_name}\n`;
+            botResponse += `   Location: ${location}\n`;
+            
+            // Include salary if available
+            if (job.job_salary_min && job.job_salary_max) {
+              botResponse += `   Salary: ${job.job_salary_currency || '₹'}${job.job_salary_min}-${job.job_salary_max} ${job.job_salary_period || 'yearly'}\n`;
+            }
+            
+            // Include apply link
+            botResponse += `   Apply: ${job.job_apply_link}\n\n`;
+          });
+          
+          botResponse += `Found ${jobResults.data.length} total results. Let me know if you'd like to see more details about any of these positions!`;
+        }
+        
+        // Use job-related emoji and chat name
+        if (!chatId) {
+          updatedEmoji = emoji || '💼';
+          updatedChatName = chatName || `Job Search: ${jobTitle}${location ? ` in ${location}` : ''}`;
+        }
+      } catch (error) {
+        botResponse = "I encountered an error while searching for jobs. Please try again.";
       }
     } else {
       // For non-job related queries, proceed with normal Groq processing
@@ -390,10 +247,10 @@ export const processWithGroq = async (request: GroqRequest): Promise<GroqRespons
         updatedContext = context || '';
       }
       
-      // Construct the system prompt for Groq
+      // Construct the system prompt for Groq - Removed job suggestion
       const systemPrompt = `You are a supportive and empathetic female assistant for women. 
 Your responses should be warm, friendly, and conversational, creating a genuine connection with users.
-ALWAYS respond in the same language that the user's message is in. If the user is searching for jobs, suggest they use the /job feature. Example: "/job developer in bangalore"
+ALWAYS respond in the same language that the user's message is in.
 
 Your response must be in valid JSON format with the following structure:
 
@@ -478,40 +335,12 @@ Previous context: ${updatedContext || "No previous context available."}`;
           user_message: message,
           bot_response: botResponse,
           context: updatedContext,
-          p_emoji: updatedEmoji // Parameter for emoji
+          p_emoji: updatedEmoji
         }
       );
       
       if (createError) throw new Error(`Failed to create chat: ${createError.message}`);
-      generatedChatId = newChatId || generatedChatId; // Use the returned ID or keep our generated one
-      
-      // If this was a job search, store the job data
-      if (isJobSearch && jobSearchResults && jobSearchResults.jobData.length > 0) {
-        const jobSearchId = uuidv4();
-        const compactJobData = jobSearchResults.jobData.map(job => ({
-          job_id: job.job_id,
-          job_title: job.job_title,
-          employer_name: job.employer_name,
-          job_apply_link: job.job_apply_link,
-          location: [job.job_city, job.job_state, job.job_country].filter(Boolean).join(', '),
-          job_posted_at: job.job_posted_at_datetime_utc,
-          skills: job.skills || [],
-          experience_level: job.experience_level || 'not specified'
-        }));
-        
-        // Store job search results
-        await supabase
-          .from('job_search_history')
-          .insert({
-            id: jobSearchId,
-            user_id: userId,
-            chat_id: generatedChatId,
-            search_query: message.replace(/\/job/i, '').trim(),
-            results: compactJobData,
-            created_at: timestamp
-          });
-      }
-      
+      generatedChatId = newChatId || generatedChatId;
     } else {
       // Add message pair for existing chat
       await supabase.rpc('add_message_pair', {
@@ -521,7 +350,7 @@ Previous context: ${updatedContext || "No previous context available."}`;
       });
       
       // Update context with enhanced information (only for non-job searches)
-      if (!isJobSearch && !isJobDetails && !isSalaryInfo) {
+      if (!message.toLowerCase().startsWith('/job') && !jobMatch) {
         await supabase
           .from('chat_contexts')
           .upsert({
@@ -541,7 +370,6 @@ Previous context: ${updatedContext || "No previous context available."}`;
           .eq('id', chatId);
       }
 
-      // Make sure generatedChatId is set to the existing chatId
       generatedChatId = chatId;
     }
     
@@ -559,7 +387,7 @@ Previous context: ${updatedContext || "No previous context available."}`;
     console.error('Error in processWithGroq:', error);
     // Provide default values for error case
     const errorEmoji = '⚠️';
-    const errorChatId = request.chatId || uuidv4(); // Generate a temporary ID if none exists
+    const errorChatId = request.chatId || uuidv4();
     
     // If we have a chatId, still try to save the error message
     if (request.chatId) {
@@ -605,28 +433,5 @@ export const getChatDetails = async (chatId: string) => {
     .single();
     
   if (error) throw new Error(`Failed to get chat details: ${error.message}`);
-  return data;
-};
-
-export const getRecentJobSearches = async (userId: string, limit = 5) => {
-  const { data, error } = await supabase
-    .from('job_search_history')
-    .select('*')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false })
-    .limit(limit);
-    
-  if (error) throw new Error(`Failed to get recent job searches: ${error.message}`);
-  return data;
-};
-
-export const getJobSearchDetails = async (searchId: string) => {
-  const { data, error } = await supabase
-    .from('job_search_history')
-    .select('*')
-    .eq('id', searchId)
-    .single();
-    
-  if (error) throw new Error(`Failed to get job search details: ${error.message}`);
   return data;
 };

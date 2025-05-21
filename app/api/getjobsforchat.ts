@@ -1,5 +1,3 @@
-import Groq from 'groq-sdk';
-
 // Define TypeScript interfaces for the API response
 interface JobSearchParams {
   query: string;
@@ -8,6 +6,7 @@ interface JobSearchParams {
   country?: string;
   datePosted?: string;
   language?: string;
+  location?: string;
 }
 
 interface ApplyOption {
@@ -53,30 +52,10 @@ interface ApiError {
   originalError?: Error;
 }
 
-interface ProcessedJob extends JobData {
-  categories: string[];
-  skills: string[];
-  experience_level: string;
-  industry: string;
-  query_relevance: number;
-  search_terms: string[];
-  created_at: string;
-  query_text: string;
-}
-
 // Base API configuration with hardcoded API key for demo app
 const API_BASE_URL = 'https://jsearch.p.rapidapi.com';
 const API_KEY = '3fe4222f05mshee7786231fb68c8p1cae9bjsnaeb6f8469718'; // Hardcoded API key for demo
 const API_HOST = 'jsearch.p.rapidapi.com';
-
-// Groq configuration
-const GROQ_API_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY || '';
-
-// Initialize Groq client with dangerouslyAllowBrowser option
-const groqClient = new Groq({ 
-  apiKey: GROQ_API_KEY,
-  dangerouslyAllowBrowser: true // Add this flag to allow browser usage
-});
 
 /**
  * Creates fetch request options with proper headers
@@ -90,127 +69,6 @@ const getRequestOptions = (): RequestInit => {
       'x-rapidapi-host': API_HOST
     }
   };
-};
-
-/**
- * Validates API keys are available
- * @returns boolean indicating if API keys are set
- */
-const validateApiKeys = (): boolean => {
-  let isValid = true;
-  
-  // API_KEY is now hardcoded, so we only need to check GROQ_API_KEY
-  if (!GROQ_API_KEY) {
-    console.error('Groq API key is not configured');
-    isValid = false;
-  }
-  
-  return isValid;
-};
-
-/**
- * Process job data using Groq LLM to extract structured information
- * @param job The job data to process
- * @param query The original search query
- * @returns Processed job with additional structured fields
- */
-const processJobWithLLM = async (job: JobData, query: string): Promise<ProcessedJob> => {
-  try {
-    // Combine job details for LLM to analyze
-    const jobText = `
-    Job Title: ${job.job_title}
-    Employer: ${job.employer_name}
-    Employment Type: ${job.job_employment_type}
-    Description: ${job.job_description || 'Not provided'}
-    Location: ${[job.job_city, job.job_state, job.job_country].filter(Boolean).join(', ')}
-    Salary: ${job.job_salary_min ? `${job.job_salary_min}-${job.job_salary_max} ${job.job_salary_currency} ${job.job_salary_period || ''}` : 'Not specified'}
-    Search Query: ${query}
-    `;
-    // Ask LLM to extract structured data
-    const response = await groqClient.chat.completions.create({
-      model: "llama3-70b-8192",
-      messages: [
-        {
-          role: "system",
-          content: "You are a job data processing assistant. Extract structured information from job listings. Respond ONLY with JSON. Do not include any explanations."
-        },
-        {
-          role: "user",
-          content: `Analyze this job listing and extract the following information:
-          1. A list of relevant skills mentioned or implied
-          2. The industry this job is in
-          3. Experience level (entry, mid, senior)
-          4. Key categories or tags for this job
-          5. Search terms relevant to this job
-          6. A relevance score from 0-100 showing how well this job matches the search query
-          
-          Return ONLY a JSON object with these fields: skills (array), industry (string), experience_level (string), categories (array), search_terms (array), query_relevance (number).
-          
-          Job details:
-          ${jobText}`
-        }
-      ],
-      temperature: 0.1,
-      max_tokens: 1000
-    });
-    // Parse LLM response
-    const content = response.choices[0]?.message?.content || '{}';
-    // Extract JSON from content (in case it's wrapped in markdown code blocks)
-    const jsonMatch = content.match(/```json\n([\s\S]*)\n```/) || content.match(/```\n([\s\S]*)\n```/) || [null, content];
-    let jsonContent = jsonMatch[1] || content;
-    
-    // If the content has multiple JSON objects, take the first complete one
-    if (jsonContent.includes('}{')) {
-      jsonContent = jsonContent.split('}{')[0] + '}';
-    }
-    try {
-      const processedData = JSON.parse(jsonContent);
-      
-      // Return combined original job data with LLM-extracted metadata
-      return {
-        ...job,
-        categories: processedData.categories || [],
-        skills: processedData.skills || [],
-        experience_level: processedData.experience_level || 'not specified',
-        industry: processedData.industry || 'not specified',
-        query_relevance: processedData.query_relevance || 50,
-        search_terms: processedData.search_terms || [],
-        created_at: new Date().toISOString(),
-        query_text: query
-      };
-    } catch (parseError) {
-      console.error('Error parsing LLM response:', parseError);
-      console.log('Raw LLM response:', content);
-      
-      // Return default processed job if parsing fails
-      return {
-        ...job,
-        categories: [],
-        skills: [],
-        experience_level: 'not specified',
-        industry: 'not specified', 
-        query_relevance: query.toLowerCase().includes(job.job_title.toLowerCase()) ? 70 : 50,
-        search_terms: [job.job_title.toLowerCase()],
-        created_at: new Date().toISOString(),
-        query_text: query
-      };
-    }
-  } catch (error) {
-    console.error('Error processing job with LLM:', error);
-    
-    // Return basic processed job on error
-    return {
-      ...job,
-      categories: [],
-      skills: [],
-      experience_level: 'not specified',
-      industry: 'not specified',
-      query_relevance: 50,
-      search_terms: [],
-      created_at: new Date().toISOString(),
-      query_text: query
-    };
-  }
 };
 
 /**
@@ -325,24 +183,44 @@ const enhanceJobData = async (jobs: JobData[]): Promise<JobData[]> => {
 };
 
 /**
- * Fetch jobs from API
- * @param searchParams - Parameters for the job search query
+ * Search for jobs by job title and location
+ * @param jobTitle - The job title to search for
+ * @param location - The location to search in (optional)
+ * @param page - Page number for pagination (default: 1)
+ * @param numPages - Number of pages to fetch (default: 1)
+ * @param country - Country code to search in (default: 'in')
+ * @param datePosted - Filter by date posted (default: 'all')
  * @returns Promise with job search results
  */
-const fetchJobsFromApi = async (searchParams: JobSearchParams): Promise<JobSearchResponse> => {
-  const params = {
-    query: searchParams.query,
-    page: searchParams.page || 1,
-    num_pages: searchParams.numPages || 1,
-    country: searchParams.country || 'in',
-    date_posted: searchParams.datePosted || 'all',
-    language: searchParams.language || 'en'
-  };
-  
-  const url = buildUrl('/search', params);
-  const options = getRequestOptions();
-  
+export const searchJobs = async (
+  jobTitle: string, 
+  location?: string, 
+  page: number = 1, 
+  numPages: number = 1,
+  country: string = 'in',
+  datePosted: string = 'all'
+): Promise<JobSearchResponse> => {
   try {
+    // Build search query with location if provided
+    let query = jobTitle;
+    if (location) {
+      query = `${jobTitle} in ${location}`;
+    }
+    
+    // Set up search parameters
+    const params = {
+      query,
+      page,
+      num_pages: numPages,
+      country,
+      date_posted: datePosted,
+      language: 'en'
+    };
+    
+    const url = buildUrl('/search', params);
+    const options = getRequestOptions();
+    
+    // Make API request
     const response = await fetch(url, options);
     
     if (!response.ok) {
@@ -358,40 +236,6 @@ const fetchJobsFromApi = async (searchParams: JobSearchParams): Promise<JobSearc
     
     return data;
   } catch (error) {
-    console.error('Error fetching job search results:', error);
-    throw error;
-  }
-};
-
-/**
- * Search for jobs and process them with LLM
- * @param searchParams - Parameters for the job search query
- * @returns Promise with job search results including processed data
- */
-export const searchJobs = async (searchParams: JobSearchParams): Promise<JobSearchResponse> => {
-  if (!validateApiKeys()) {
-    throw new Error('Required API keys not configured');
-  }
-  
-  try {
-    // Fetch from API
-    const apiResponse = await fetchJobsFromApi(searchParams);
-    
-    // Process each job with LLM to extract structured data
-    if (apiResponse.status === 'success' && apiResponse.data.length > 0) {
-      const processedJobs = await Promise.all(
-        apiResponse.data.map(job => processJobWithLLM(job, searchParams.query))
-      );
-      
-      // Return the processed results
-      return {
-        ...apiResponse,
-        data: processedJobs
-      };
-    }
-    
-    return apiResponse;
-  } catch (error) {
     console.error('Error in searchJobs:', error);
     throw error;
   }
@@ -403,10 +247,6 @@ export const searchJobs = async (searchParams: JobSearchParams): Promise<JobSear
  * @returns Promise with job details
  */
 export const getJobDetails = async (jobId: string): Promise<any> => {
-  if (!validateApiKeys()) {
-    throw new Error('Required API keys not configured');
-  }
-  
   try {
     // Fetch from API
     const url = buildUrl('/job-details', { job_id: jobId });
@@ -425,16 +265,6 @@ export const getJobDetails = async (jobId: string): Promise<any> => {
     // Enhance job data with logos
     if (apiResponse.status === 'success' && apiResponse.data.length > 0) {
       apiResponse.data = await enhanceJobData(apiResponse.data);
-      
-      // Process with LLM for additional structured data
-      const processedJobs = await Promise.all(
-        apiResponse.data.map((job: JobData) => processJobWithLLM(job, `job_id:${jobId}`))
-      );
-      
-      return {
-        ...apiResponse,
-        data: processedJobs
-      };
     }
     
     return apiResponse;
@@ -444,104 +274,8 @@ export const getJobDetails = async (jobId: string): Promise<any> => {
   }
 };
 
-/**
- * Get estimated salaries for a job title
- * @param jobTitle - The job title to get salary estimates for
- * @param location - Optional location to filter salary data
- * @returns Promise with salary data
- */
-export const getJobSalaries = async (jobTitle: string, location?: string): Promise<any> => {
-  if (!validateApiKeys()) {
-    throw new Error('Required API keys not configured');
-  }
-  
-  try {
-    // Fetch from API
-    const url = buildUrl('/estimated-salary', {
-      job_title: jobTitle,
-      location: location || '',
-      radius: '100'
-    });
-    const options = getRequestOptions();
-    
-    const response = await fetch(url, options);
-    
-    if (!response.ok) {
-      const apiError = await handleApiError(new Error(`HTTP error ${response.status}`), response);
-      console.error(`Error fetching salary estimates: ${apiError.message}`);
-      throw apiError;
-    }
-    
-    const apiResponse = await response.json();
-    
-    // Process salary data with LLM for additional insights
-    if (apiResponse.status === 'success' && apiResponse.data) {
-      const salaryData = apiResponse.data;
-      let processedSalaryData = salaryData;
-      
-      try {
-        // Use LLM to add additional context to salary data
-        const salaryPrompt = `
-          Analyze this salary data for ${jobTitle} ${location ? `in ${location}` : ''}:
-          ${JSON.stringify(salaryData)}
-          
-          Extract additional insights such as:
-          - Industry comparisons
-          - Experience level breakdowns
-          - Educational requirements impact
-          
-          Return ONLY a JSON object with the original data plus these new fields.
-        `;
-        
-        const salaryResponse = await groqClient.chat.completions.create({
-          model: "llama3-70b-8192",
-          messages: [
-            {
-              role: "system",
-              content: "You are a salary data analyst. Extract and enhance salary information."
-            },
-            {
-              role: "user",
-              content: salaryPrompt
-            }
-          ],
-          temperature: 0.1,
-          max_tokens: 1000
-        });
-        
-        const salaryContent = salaryResponse.choices[0]?.message?.content || '{}';
-        // Extract JSON from content (in case it's wrapped in markdown code blocks)
-        const jsonMatch = salaryContent.match(/```json\n([\s\S]*)\n```/) || salaryContent.match(/```\n([\s\S]*)\n```/) || [null, salaryContent];
-        let jsonContent = jsonMatch[1] || salaryContent;
-        
-        try {
-          processedSalaryData = JSON.parse(jsonContent);
-        } catch (parseError) {
-          console.error('Error parsing LLM salary response:', parseError);
-          processedSalaryData = salaryData;
-        }
-      } catch (llmError) {
-        console.error('Error processing salary data with LLM:', llmError);
-        processedSalaryData = salaryData;
-      }
-      
-      // Return enhanced data
-      return {
-        status: 'success',
-        data: processedSalaryData
-      };
-    }
-    
-    return apiResponse;
-  } catch (error) {
-    console.error('Error fetching salary estimates:', error);
-    throw error;
-  }
-};
-
 // Export a default object that combines the above functionality
 export default {
   searchJobs,
-  getJobDetails,
-  getJobSalaries
+  getJobDetails
 };
