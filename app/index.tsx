@@ -89,7 +89,7 @@ export default function WelcomePage() {
       }
       
       console.log('User signed in:', data.user);
-      router.replace('/(tabs)/home');
+      router.replace('/(tabs)/chat');
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to sign in';
       console.error('Error signing in with Google:', errorMessage);

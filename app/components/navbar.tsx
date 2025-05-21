@@ -3,15 +3,14 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRouter, usePathname } from 'expo-router';
 
-type RoutePath = '/home' | '/explore' | '/chat' | '/profile';
+type RoutePath =  '/chat' | '/profile';
 
 const Navbar = () => {
   const router = useRouter();
   const pathname = usePathname();
 
   const navItems: { label: string; icon: any; path: RoutePath }[] = [
-    { label: 'Home', icon: 'home', path: '/home' },
-    { label: 'Search', icon: 'search', path: '/explore' },
+
     { label: 'Chat', icon: 'message-square', path: '/chat' },
     { label: 'Profile', icon: 'user', path: '/profile' },
   ];
