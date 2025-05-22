@@ -1,77 +1,125 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Linking } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
-interface CommandSuggestionsProps {
-  onSelectCommand: (command: string) => void;
-  onExampleClick?: (fullCommand: string) => void; // New prop for handling example clicks
+interface JobData {
+  employer_logo: string;
+  job_title: string;
+  employer_name: string;
+  job_apply_link: string;
+  job_employment_type: string;
+  job_posted_at_datetime_utc: string;
 }
 
-const CommandSuggestions: React.FC<CommandSuggestionsProps> = ({ 
-  onSelectCommand, 
-  onExampleClick = (fullCommand) => onSelectCommand(fullCommand) // Default behavior
+interface JobDetailCardProps {
+  message: string;
+  onSelectCommand?: (command: string) => void;
+  onExampleClick?: (fullCommand: string) => void;
+}
+
+const JobDetailCard: React.FC<JobDetailCardProps> = ({ 
+  message, 
+  onSelectCommand = () => {}, 
+  onExampleClick = () => {} 
 }) => {
-  const commands = [
-    {
-      command: '/job',
-      description: 'Search for jobs',
-      icon: 'work',
-      examples: ['software engineer', 'data scientist', 'project manager']
-    },
-    {
-      command: '/job-details',
-      description: 'Get detailed information about a specific job',
-      icon: 'description',
-      examples: ['<job-id>']
-    },
-    {
-      command: '/salary',
-      description: 'Get salary information for a job role',
-      icon: 'attach-money',
-      examples: ['software engineer', 'marketing manager in New York']
+  // Parse job data from message
+  const parseJobData = (message: string): JobData[] => {
+    try {
+      // Look for /jobdata command followed by JSON
+      const jobDataMatch = message.match(/\/jobdata\s*(\[.*\])/s);
+      if (jobDataMatch) {
+        return JSON.parse(jobDataMatch[1]);
+      }
+      return [];
+    } catch (error) {
+      console.error('Error parsing job data:', error);
+      return [];
     }
-  ];
+  };
+
+  // Format date to readable format
+  const formatDate = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric' 
+      });
+    } catch {
+      return 'Date not available';
+    }
+  };
+
+  // Handle apply button press
+  const handleApply = async (applyLink: string) => {
+    try {
+      const supported = await Linking.canOpenURL(applyLink);
+      if (supported) {
+        await Linking.openURL(applyLink);
+      } else {
+        console.error("Can't open URL:", applyLink);
+      }
+    } catch (error) {
+      console.error('Error opening URL:', error);
+    }
+  };
+
+  // Check if message contains /jobdetail command
+  const isJobDetailCommand = message.toLowerCase().includes('/jobdata');
+  const jobData = parseJobData(message);
+
+  // If not a job detail command or no job data, don't render anything
+  if (!isJobDetailCommand || jobData.length === 0) {
+    return null;
+  }
 
   return (
     <View style={styles.container}>
-      <ScrollView style={styles.scrollView}>
-        {commands.map((item) => (
-          <TouchableOpacity
-            key={item.command}
-            style={styles.commandItem}
-            onPress={() => onSelectCommand(item.command)}
-          >
-            <MaterialIcons 
-              name={item.icon as any}
-              size={24} 
-              color="#49654E" 
-              style={styles.commandIcon} 
-            />
-            <View style={styles.commandTextContainer}>
-              <Text style={styles.commandText}>{item.command}</Text>
-              <Text style={styles.commandDescription}>{item.description}</Text>
-              <View style={styles.examplesContainer}>
-                <Text style={styles.examplesLabel}>Examples: </Text>
-                <View style={styles.exampleLinks}>
-                  {item.examples.map((example, i) => (
-                    <View key={i} style={styles.exampleLinkWrapper}>
-                      <TouchableOpacity
-                        onPress={() => onExampleClick(`${item.command} ${example}`)}
-                        style={styles.exampleLink}
-                      >
-                        <Text style={styles.exampleText}>
-                          {`${item.command} ${example}`}
-                        </Text>
-                      </TouchableOpacity>
-                      {i < item.examples.length - 1 && (
-                        <Text style={styles.examplesSeparator}>, </Text>
-                      )}
-                    </View>
-                  ))}
-                </View>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {jobData.map((job, index) => (
+          <View key={index} style={styles.jobCard}>
+            {/* Header with logo and basic info */}
+            <View style={styles.headerContainer}>
+              <Image 
+                source={{ uri: job.employer_logo }} 
+                style={styles.companyLogo}
+                defaultSource={{ uri: 'https://via.placeholder.com/50x50?text=Logo' }}
+              />
+              <View style={styles.headerTextContainer}>
+                <Text style={styles.jobTitle} numberOfLines={2}>
+                  {job.job_title}
+                </Text>
+                <Text style={styles.companyName}>
+                  {job.employer_name}
+                </Text>
               </View>
             </View>
-          </TouchableOpacity>
+
+            {/* Job details */}
+            <View style={styles.detailsContainer}>
+              <View style={styles.detailRow}>
+                <MaterialIcons name="work" size={16} color="#49654E" />
+                <Text style={styles.detailText}>{job.job_employment_type}</Text>
+              </View>
+              
+              <View style={styles.detailRow}>
+                <MaterialIcons name="schedule" size={16} color="#49654E" />
+                <Text style={styles.detailText}>
+                  Posted on {formatDate(job.job_posted_at_datetime_utc)}
+                </Text>
+              </View>
+            </View>
+
+            {/* Apply button */}
+            <TouchableOpacity 
+              style={styles.applyButton}
+              onPress={() => handleApply(job.job_apply_link)}
+            >
+              <MaterialIcons name="open-in-new" size={18} color="#FFFFFF" />
+              <Text style={styles.applyButtonText}>Apply Now</Text>
+            </TouchableOpacity>
+          </View>
         ))}
       </ScrollView>
     </View>
@@ -80,80 +128,79 @@ const CommandSuggestions: React.FC<CommandSuggestionsProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    position: 'absolute',
-    bottom: 70,
-    left: 0,
-    right: 0,
     backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
-    maxHeight: 200,
-    borderRadius: 8,
+    borderRadius: 12,
     margin: 8,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowRadius: 8,
     elevation: 4,
+    maxHeight: 400,
   },
   scrollView: {
-    maxHeight: 200,
+    maxHeight: 400,
   },
-  commandItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    padding: 12,
+  jobCard: {
+    padding: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#E0E0E0',
   },
-  commandIcon: {
-    marginRight: 12,
-    marginTop: 4,
+  headerContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
   },
-  commandTextContainer: {
+  companyLogo: {
+    width: 50,
+    height: 50,
+    borderRadius: 8,
+    marginRight: 12,
+    backgroundColor: '#F5F5F5',
+  },
+  headerTextContainer: {
     flex: 1,
   },
-  commandText: {
-    fontSize: 16,
+  jobTitle: {
+    fontSize: 18,
     fontWeight: '600',
     color: '#253528',
-    marginBottom: 2,
-  },
-  commandDescription: {
-    fontSize: 14,
-    color: '#49654E',
+    lineHeight: 24,
     marginBottom: 4,
   },
-  examplesContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  examplesLabel: {
-    fontSize: 12,
-    color: '#666666',
-    fontStyle: 'italic',
-  },
-  exampleLinks: {
-    flex: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  exampleLinkWrapper: {
-    flexDirection: 'row',
-  },
-  exampleLink: {
-    // Interactive styling for the example links
-    paddingVertical: 2,
-  },
-  exampleText: {
-    fontSize: 12,
+  companyName: {
+    fontSize: 16,
     color: '#49654E',
-    textDecorationLine: 'underline',
+    fontWeight: '500',
   },
-  examplesSeparator: {
-    fontSize: 12,
+  detailsContainer: {
+    marginBottom: 16,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  detailText: {
+    fontSize: 14,
     color: '#666666',
+    marginLeft: 8,
+  },
+  applyButton: {
+    backgroundColor: '#49654E',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  applyButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
 });
 
-export default CommandSuggestions;
+export default JobDetailCard;

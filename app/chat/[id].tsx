@@ -24,6 +24,7 @@ import { processWithGroq } from '../api/groqapi';
 import { StatusBar } from 'expo-status-bar';
 import * as Google from 'expo-auth-session/providers/google';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import JobDetailCard from '../components/JobCard'; // Add this line
 
 // Hardcoded Supabase credentials
 const SUPABASE_URL = 'https://ibwjjwzomoyhkxugmmmw.supabase.co';
@@ -377,6 +378,11 @@ const ChatScreen = () => {
   );
 
   const renderMessage = ({ item }: { item: Message }) => {
+    // Check if the message contains /jobdata command
+    if (!item.is_user_message && item.content.toLowerCase().includes('/jobdata')) {
+      return <JobDetailCard message={item.content} />;
+    }
+    
     // For job search messages, only show user message bubble without assistant response
     if (item.isJobSearch && !item.is_user_message) {
       // This is a bot response to a job search command, so render only job cards
