@@ -92,21 +92,58 @@ const YEARS = generateYears();
 // Import ProfileAPI
 import { ProfileAPI } from '../api/createprofile';
 
+// Define interfaces for better type safety
+interface EducationEntry {
+  id: string;
+  institution: string;
+  degree: string;
+  startYear: string;
+  endYear: string;
+  location: string;
+}
+
+interface ExperienceEntry {
+  id: string;
+  company: string;
+  position: string;
+  startYear: string;
+  endYear: string;
+  location: string;
+}
+
+interface FormData {
+  name: string;
+  email: string;
+  profilePhoto: string | null;
+  education: EducationEntry[];
+  experience: ExperienceEntry[];
+  skills: string[];
+}
+
+interface YearPickerState {
+  show: boolean;
+  type: 'education' | 'experience';
+  id: string;
+  field: 'startYear' | 'endYear';
+}
+
 export default function OnboardingForm() {
   const router = useRouter();
   const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState(null);
+  const [error, setError] = React.useState<string | null>(null);
   const [skillInput, setSkillInput] = React.useState('');
   const [showSkillSuggestions, setShowSkillSuggestions] = React.useState(false);
-  const [filteredSkills, setFilteredSkills] = React.useState([]);
-  const [showYearPicker, setShowYearPicker] = React.useState({
+  const [filteredSkills, setFilteredSkills] = React.useState<string[]>([]);
+  const [showYearPicker, setShowYearPicker] = React.useState<YearPickerState>({
     show: false,
     type: 'education',
     id: '',
     field: 'startYear'
   });
+  const [isSubmitted, setIsSubmitted] = React.useState(false);
+  const [showSuccessAnimation, setShowSuccessAnimation] = React.useState(false);
   
-  const [formData, setFormData] = React.useState({
+  const [formData, setFormData] = React.useState<FormData>({
     name: '',
     email: '',
     profilePhoto: null,
@@ -193,7 +230,7 @@ export default function OnboardingForm() {
     }
   };
 
-  const updateFormField = (field, value) => {
+  const updateFormField = (field: keyof FormData, value: any) => {
     setFormData(prev => ({
       ...prev,
       [field]: value,
@@ -201,7 +238,7 @@ export default function OnboardingForm() {
   };
 
   // Skills management
-  const addSkill = (skill) => {
+  const addSkill = (skill: string) => {
     const trimmedSkill = skill.trim();
     if (trimmedSkill && !formData.skills.includes(trimmedSkill)) {
       setFormData(prev => ({
@@ -213,7 +250,7 @@ export default function OnboardingForm() {
     }
   };
 
-  const removeSkill = (skillToRemove) => {
+  const removeSkill = (skillToRemove: string) => {
     setFormData(prev => ({
       ...prev,
       skills: prev.skills.filter(skill => skill !== skillToRemove),
@@ -242,7 +279,7 @@ export default function OnboardingForm() {
     }));
   };
 
-  const removeEducationEntry = (id) => {
+  const removeEducationEntry = (id: string) => {
     if (formData.education.length > 1) {
       setFormData(prev => ({
         ...prev,
@@ -251,7 +288,7 @@ export default function OnboardingForm() {
     }
   };
 
-  const updateEducationEntry = (id, field, value) => {
+  const updateEducationEntry = (id: string, field: keyof EducationEntry, value: string) => {
     setFormData(prev => ({
       ...prev,
       education: prev.education.map(entry =>
@@ -276,7 +313,7 @@ export default function OnboardingForm() {
     }));
   };
 
-  const removeExperienceEntry = (id) => {
+  const removeExperienceEntry = (id: string) => {
     if (formData.experience.length > 1) {
       setFormData(prev => ({
         ...prev,
@@ -285,7 +322,7 @@ export default function OnboardingForm() {
     }
   };
 
-  const updateExperienceEntry = (id, field, value) => {
+  const updateExperienceEntry = (id: string, field: keyof ExperienceEntry, value: string) => {
     setFormData(prev => ({
       ...prev,
       experience: prev.experience.map(entry =>
@@ -294,11 +331,11 @@ export default function OnboardingForm() {
     }));
   };
 
-  const openYearPicker = (type, id, field) => {
+  const openYearPicker = (type: 'education' | 'experience', id: string, field: 'startYear' | 'endYear') => {
     setShowYearPicker({ show: true, type, id, field });
   };
 
-  const selectYear = (year) => {
+  const selectYear = (year: string) => {
     const { type, id, field } = showYearPicker;
     if (type === 'education') {
       updateEducationEntry(id, field, year);
@@ -308,61 +345,39 @@ export default function OnboardingForm() {
     setShowYearPicker({ show: false, type: 'education', id: '', field: 'startYear' });
   };
 
-  // Updated handleSubmit function using ProfileAPI
+  // Updated handleSubmit function with post-submission handling
   const handleSubmit = async () => {
     setError(null);
     setLoading(true);
-
     try {
-      // Validate form data using ProfileAPI validation
+      // Use ProfileAPI validation instead of local validation
       const validation = ProfileAPI.validateProfileData(formData);
       
       if (!validation.isValid) {
         setError(validation.errors[0]); // Show first error
         return;
       }
-
-      // Handle profile photo upload if present
-      let photoUrl = formData.profilePhoto;
-      if (formData.profilePhoto && formData.profilePhoto.startsWith('file://')) {
-        const uploadResult = await ProfileAPI.uploadProfilePhoto(formData.profilePhoto);
-        
-        if (uploadResult.success) {
-          photoUrl = uploadResult.data.publicUrl;
-        } else {
-          console.warn('Photo upload failed:', uploadResult.error);
-          // Continue without photo rather than failing completely
-          photoUrl = null;
-        }
+      
+      // Create profile using ProfileAPI
+      const result = await ProfileAPI.createProfile(formData);
+      
+      if (!result.success) {
+        setError(result.error || 'Failed to save profile');
+        return;
       }
-
-      // Prepare data for API
-      const profileData = {
-        ...formData,
-        profilePhoto: photoUrl,
-      };
-
-      // Save profile using ProfileAPI
-      const result = await ProfileAPI.saveProfile(profileData);
-
-      if (result.success) {
-        Alert.alert(
-          'Success!',
-          'Your profile has been saved successfully.',
-          [
-            {
-              text: 'Continue',
-              onPress: () => {
-                // Navigate to next screen
-                router.replace('/(tabs)/chat');
-              },
-            },
-          ]
-        );
-      } else {
-        throw new Error(result.error || 'Failed to save profile');
-      }
-
+      
+      // Set submission success state
+      setIsSubmitted(true);
+      setShowSuccessAnimation(true);
+      
+      // Hide success animation after 2 seconds and navigate
+      setTimeout(() => {
+        setShowSuccessAnimation(false);
+        setTimeout(() => {
+          router.replace('/(tabs)/chat');
+        }, 300);
+      }, 2500);
+      
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to save profile';
       console.error('Error saving profile:', errorMessage);
@@ -372,9 +387,18 @@ export default function OnboardingForm() {
     }
   };
 
+  const handleEditProfile = () => {
+    setIsSubmitted(false);
+    setError(null);
+  };
+
   const renderProfilePhoto = () => (
     <View style={styles.photoSection}>
-      <TouchableOpacity onPress={pickImage} style={styles.photoContainer}>
+      <TouchableOpacity 
+        onPress={isSubmitted ? undefined : pickImage} 
+        style={[styles.photoContainer, isSubmitted && styles.photoContainerDisabled]}
+        disabled={isSubmitted}
+      >
         {formData.profilePhoto ? (
           <Image source={{ uri: formData.profilePhoto }} style={styles.profileImage} />
         ) : (
@@ -383,34 +407,39 @@ export default function OnboardingForm() {
             <Text style={styles.photoPlaceholderText}>Add Photo</Text>
           </View>
         )}
-        <View style={styles.photoEditIcon}>
-          <Feather name="edit-2" size={18} color={COLORS.white} />
-        </View>
+        {!isSubmitted && (
+          <View style={styles.photoEditIcon}>
+            <Feather name="edit-2" size={18} color={COLORS.white} />
+          </View>
+        )}
       </TouchableOpacity>
     </View>
   );
 
-  const renderYearSelector = (type, id, field, value) => (
+  const renderYearSelector = (type: 'education' | 'experience', id: string, field: 'startYear' | 'endYear', value: string) => (
     <TouchableOpacity
-      style={styles.yearSelector}
-      onPress={() => openYearPicker(type, id, field)}
+      style={[styles.yearSelector, isSubmitted && styles.yearSelectorDisabled]}
+      onPress={isSubmitted ? undefined : () => openYearPicker(type, id, field)}
+      disabled={isSubmitted}
     >
       <Text style={[styles.yearText, !value && styles.placeholder]}>
         {value || (field === 'startYear' ? 'Start Year' : 'End Year')}
       </Text>
-      <AntDesign name="down" size={16} color={COLORS.textLight} />
+      {!isSubmitted && <AntDesign name="down" size={16} color={COLORS.textLight} />}
     </TouchableOpacity>
   );
 
-  const renderSkillTag = ({ item }) => (
+  const renderSkillTag = ({ item }: { item: string }) => (
     <View style={styles.skillTag}>
       <Text style={styles.skillTagText}>{item}</Text>
-      <TouchableOpacity
-        onPress={() => removeSkill(item)}
-        style={styles.skillRemoveButton}
-      >
-        <AntDesign name="close" size={14} color={COLORS.white} />
-      </TouchableOpacity>
+      {!isSubmitted && (
+        <TouchableOpacity
+          onPress={() => removeSkill(item)}
+          style={styles.skillRemoveButton}
+        >
+          <AntDesign name="close" size={14} color={COLORS.white} />
+        </TouchableOpacity>
+      )}
     </View>
   );
 
@@ -422,33 +451,37 @@ export default function OnboardingForm() {
       </View>
       
       <View style={styles.skillsContainer}>
-        <View style={styles.skillInputContainer}>
-          <TextInput
-            style={styles.skillInput}
-            placeholder="Add a skill..."
-            placeholderTextColor={COLORS.placeholder}
-            value={skillInput}
-            onChangeText={setSkillInput}
-            onSubmitEditing={handleSkillInputSubmit}
-            returnKeyType="done"
-          />
-        </View>
+        {!isSubmitted && (
+          <>
+            <View style={styles.skillInputContainer}>
+              <TextInput
+                style={styles.skillInput}
+                placeholder="Add a skill..."
+                placeholderTextColor={COLORS.placeholder}
+                value={skillInput}
+                onChangeText={setSkillInput}
+                onSubmitEditing={handleSkillInputSubmit}
+                returnKeyType="done"
+              />
+            </View>
 
-        {showSkillSuggestions && (
-          <View style={styles.skillSuggestions}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {filteredSkills.map((skill, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={styles.suggestionTag}
-                  onPress={() => addSkill(skill)}
-                >
-                  <Text style={styles.suggestionText}>{skill}</Text>
-                  <AntDesign name="plus" size={12} color={COLORS.mediumOlive} />
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
+            {showSkillSuggestions && (
+              <View style={styles.skillSuggestions}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {filteredSkills.map((skill, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.suggestionTag}
+                      onPress={() => addSkill(skill)}
+                    >
+                      <Text style={styles.suggestionText}>{skill}</Text>
+                      <AntDesign name="plus" size={12} color={COLORS.mediumOlive} />
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+          </>
         )}
 
         {formData.skills.length > 0 && (
@@ -475,9 +508,11 @@ export default function OnboardingForm() {
           <MaterialIcons name="school" size={24} color={COLORS.primary} />
           <Text style={styles.sectionTitle}>Education</Text>
         </View>
-        <TouchableOpacity onPress={addEducationEntry} style={styles.addButton}>
-          <AntDesign name="plus" size={20} color={COLORS.primary} />
-        </TouchableOpacity>
+        {!isSubmitted && (
+          <TouchableOpacity onPress={addEducationEntry} style={styles.addButton}>
+            <AntDesign name="plus" size={20} color={COLORS.primary} />
+          </TouchableOpacity>
+        )}
       </View>
       
       {formData.education.map((entry, index) => (
@@ -486,7 +521,7 @@ export default function OnboardingForm() {
             <View style={styles.entryIndexContainer}>
               <Text style={styles.entryIndex}>{index + 1}</Text>
             </View>
-            {formData.education.length > 1 && (
+            {!isSubmitted && formData.education.length > 1 && (
               <TouchableOpacity 
                 onPress={() => removeEducationEntry(entry.id)}
                 style={styles.removeButton}
@@ -498,19 +533,21 @@ export default function OnboardingForm() {
           
           <View style={styles.inputGroup}>
             <TextInput
-              style={styles.input}
+              style={[styles.input, isSubmitted && styles.inputDisabled]}
               placeholder="Institution Name"
               placeholderTextColor={COLORS.placeholder}
               value={entry.institution}
-              onChangeText={(text) => updateEducationEntry(entry.id, 'institution', text)}
+              onChangeText={isSubmitted ? undefined : (text) => updateEducationEntry(entry.id, 'institution', text)}
+              editable={!isSubmitted}
             />
             
             <TextInput
-              style={styles.input}
+              style={[styles.input, isSubmitted && styles.inputDisabled]}
               placeholder="Degree/Program"
               placeholderTextColor={COLORS.placeholder}
               value={entry.degree}
-              onChangeText={(text) => updateEducationEntry(entry.id, 'degree', text)}
+              onChangeText={isSubmitted ? undefined : (text) => updateEducationEntry(entry.id, 'degree', text)}
+              editable={!isSubmitted}
             />
 
             <View style={styles.yearRow}>
@@ -520,11 +557,12 @@ export default function OnboardingForm() {
             </View>
             
             <TextInput
-              style={styles.input}
+              style={[styles.input, isSubmitted && styles.inputDisabled]}
               placeholder="Location"
               placeholderTextColor={COLORS.placeholder}
               value={entry.location}
-              onChangeText={(text) => updateEducationEntry(entry.id, 'location', text)}
+              onChangeText={isSubmitted ? undefined : (text) => updateEducationEntry(entry.id, 'location', text)}
+              editable={!isSubmitted}
             />
           </View>
         </View>
@@ -539,9 +577,11 @@ export default function OnboardingForm() {
           <MaterialIcons name="work" size={24} color={COLORS.primary} />
           <Text style={styles.sectionTitle}>Experience</Text>
         </View>
-        <TouchableOpacity onPress={addExperienceEntry} style={styles.addButton}>
-          <AntDesign name="plus" size={20} color={COLORS.primary} />
-        </TouchableOpacity>
+        {!isSubmitted && (
+          <TouchableOpacity onPress={addExperienceEntry} style={styles.addButton}>
+            <AntDesign name="plus" size={20} color={COLORS.primary} />
+          </TouchableOpacity>
+        )}
       </View>
       
       {formData.experience.map((entry, index) => (
@@ -550,7 +590,7 @@ export default function OnboardingForm() {
             <View style={styles.entryIndexContainer}>
               <Text style={styles.entryIndex}>{index + 1}</Text>
             </View>
-            {formData.experience.length > 1 && (
+            {!isSubmitted && formData.experience.length > 1 && (
               <TouchableOpacity 
                 onPress={() => removeExperienceEntry(entry.id)}
                 style={styles.removeButton}
@@ -562,19 +602,21 @@ export default function OnboardingForm() {
           
           <View style={styles.inputGroup}>
             <TextInput
-              style={styles.input}
+              style={[styles.input, isSubmitted && styles.inputDisabled]}
               placeholder="Company Name"
               placeholderTextColor={COLORS.placeholder}
               value={entry.company}
-              onChangeText={(text) => updateExperienceEntry(entry.id, 'company', text)}
+              onChangeText={isSubmitted ? undefined : (text) => updateExperienceEntry(entry.id, 'company', text)}
+              editable={!isSubmitted}
             />
             
             <TextInput
-              style={styles.input}
+              style={[styles.input, isSubmitted && styles.inputDisabled]}
               placeholder="Position/Role"
               placeholderTextColor={COLORS.placeholder}
               value={entry.position}
-              onChangeText={(text) => updateExperienceEntry(entry.id, 'position', text)}
+              onChangeText={isSubmitted ? undefined : (text) => updateExperienceEntry(entry.id, 'position', text)}
+              editable={!isSubmitted}
             />
 
             <View style={styles.yearRow}>
@@ -584,17 +626,89 @@ export default function OnboardingForm() {
             </View>
             
             <TextInput
-              style={styles.input}
+              style={[styles.input, isSubmitted && styles.inputDisabled]}
               placeholder="Location"
               placeholderTextColor={COLORS.placeholder}
               value={entry.location}
-              onChangeText={(text) => updateExperienceEntry(entry.id, 'location', text)}
+              onChangeText={isSubmitted ? undefined : (text) => updateExperienceEntry(entry.id, 'location', text)}
+              editable={!isSubmitted}
             />
           </View>
         </View>
       ))}
     </View>
   );
+
+  const renderSuccessMessage = () => (
+  <View style={styles.successContainer}>
+    <LinearGradient
+      colors={[COLORS.white, COLORS.background]}
+      style={styles.successCard}
+    >
+      {/* Animated Success Icon */}
+      <View style={[styles.successIconContainer, showSuccessAnimation && styles.successIconAnimated]}>
+        <LinearGradient
+          colors={[COLORS.primary, COLORS.secondary]}
+          style={styles.successIconBackground}
+        >
+          <AntDesign name="checkcircle" size={50} color={COLORS.white} />
+        </LinearGradient>
+        
+        {/* Ripple Effect */}
+        <View style={[styles.ripple1, showSuccessAnimation && styles.rippleAnimated]} />
+        <View style={[styles.ripple2, showSuccessAnimation && styles.rippleAnimated]} />
+        <View style={[styles.ripple3, showSuccessAnimation && styles.rippleAnimated]} />
+      </View>
+
+      {/* Success Content */}
+      <View style={styles.successContent}>
+        <Text style={styles.successTitle}>Profile Complete! 🎉</Text>
+        <Text style={styles.successSubtitle}>
+          Your professional profile has been successfully created and saved.
+        </Text>
+        
+        {/* Success Stats */}
+        <View style={styles.successStats}>
+          <View style={styles.statItem}>
+            <View style={styles.statIcon}>
+              <Feather name="user" size={20} color={COLORS.primary} />
+            </View>
+            <Text style={styles.statLabel}>Profile</Text>
+            <Text style={styles.statValue}>Complete</Text>
+          </View>
+          
+          <View style={styles.statDivider} />
+          
+          <View style={styles.statItem}>
+            <View style={styles.statIcon}>
+              <MaterialIcons name="stars" size={20} color={COLORS.mediumOlive} />
+            </View>
+            <Text style={styles.statLabel}>Skills</Text>
+            <Text style={styles.statValue}>{formData.skills.length}</Text>
+          </View>
+          
+          <View style={styles.statDivider} />
+          
+          <View style={styles.statItem}>
+            <View style={styles.statIcon}>
+              <MaterialIcons name="school" size={20} color={COLORS.secondary} />
+            </View>
+            <Text style={styles.statLabel}>Education</Text>
+            <Text style={styles.statValue}>{formData.education.length}</Text>
+          </View>
+        </View>
+
+        {/* Progress Bar */}
+        <View style={styles.progressContainer}>
+          <Text style={styles.progressLabel}>Setting up your experience...</Text>
+          <View style={styles.progressBar}>
+            <View style={[styles.progressFill, showSuccessAnimation && styles.progressFillAnimated]} />
+          </View>
+        </View>
+      </View>
+    </LinearGradient>
+  </View>
+);
 
   return (
     <View style={styles.container}>
@@ -607,70 +721,109 @@ export default function OnboardingForm() {
             style={styles.scrollView}
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
+            scrollEnabled={!showSuccessAnimation}
           >
             <View style={styles.header}>
-              <Text style={styles.title}>Complete Your Profile</Text>
-              <Text style={styles.subtitle}>Tell us about yourself to get started</Text>
+              <Text style={styles.title}>
+                {isSubmitted ? 'Profile Complete' : 'Complete Your Profile'}
+              </Text>
+              <Text style={styles.subtitle}>
+                {isSubmitted 
+                  ? 'Your profile has been successfully created' 
+                  : 'Tell us about yourself to get started'}
+              </Text>
             </View>
 
-            {renderProfilePhoto()}
+            {isSubmitted && showSuccessAnimation && renderSuccessMessage()}
 
-            <View style={styles.section}>
-              <View style={styles.sectionTitleContainer}>
-                <Feather name="user" size={24} color={COLORS.primary} />
-                <Text style={styles.sectionTitle}>Basic Information</Text>
-              </View>
-              
-              <View style={styles.inputGroup}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Full Name *"
-                  placeholderTextColor={COLORS.placeholder}
-                  value={formData.name}
-                  onChangeText={(text) => updateFormField('name', text)}
-                />
-                
-                <TextInput
-                  style={[styles.input, styles.disabledInput]}
-                  placeholder="Email"
-                  placeholderTextColor={COLORS.placeholder}
-                  value={formData.email}
-                  editable={false}
-                />
-              </View>
-            </View>
+            {(!isSubmitted || !showSuccessAnimation) && (
+              <>
+                {renderProfilePhoto()}
 
-            {renderSkillsSection()}
-            {renderEducationSection()}
-            {renderExperienceSection()}
+                <View style={styles.section}>
+                  <View style={styles.sectionTitleContainer}>
+                    <Feather name="user" size={24} color={COLORS.primary} />
+                    <Text style={styles.sectionTitle}>Basic Information</Text>
+                  </View>
+                  
+                  <View style={styles.inputGroup}>
+                    <TextInput
+                      style={[styles.input, isSubmitted && styles.inputDisabled]}
+                      placeholder="Full Name *"
+                      placeholderTextColor={COLORS.placeholder}
+                      value={formData.name}
+                      onChangeText={isSubmitted ? undefined : (text) => updateFormField('name', text)}
+                      editable={!isSubmitted}
+                    />
+                    
+                    <TextInput
+                      style={[styles.input, styles.disabledInput]}
+                      placeholder="Email"
+                      placeholderTextColor={COLORS.placeholder}
+                      value={formData.email}
+                      editable={false}
+                    />
+                  </View>
+                </View>
 
-            {error && (
-              <View style={styles.errorContainer}>
-                <AntDesign name="exclamationcircle" size={20} color={COLORS.error} />
-                <Text style={styles.errorText}>{error}</Text>
-              </View>
+                {renderSkillsSection()}
+                {renderEducationSection()}
+                {renderExperienceSection()}
+
+                {error && (
+                  <View style={styles.errorContainer}>
+                    <AntDesign name="exclamationcircle" size={20} color={COLORS.error} />
+                    <Text style={styles.errorText}>{error}</Text>
+                  </View>
+                )}
+
+                {!isSubmitted ? (
+                  <TouchableOpacity 
+                    style={[styles.submitButton, loading && styles.buttonDisabled]}
+                    onPress={handleSubmit}
+                    disabled={loading}
+                  >
+                    <LinearGradient
+                      colors={[COLORS.primary, COLORS.secondary]}
+                      style={styles.submitButtonGradient}
+                    >
+                      <Text style={styles.submitButtonText}>
+                        {loading ? 'Saving Profile...' : 'Save Profile'}
+                      </Text>
+                      {!loading && <AntDesign name="arrowright" size={20} color={COLORS.white} />}
+                    </LinearGradient>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.submittedActions}>
+                    <TouchableOpacity 
+                      style={styles.editButton}
+                      onPress={handleEditProfile}
+                    >
+                      <Text style={styles.editButtonText}>Edit Profile</Text>
+                      <AntDesign name="edit" size={16} color={COLORS.primary} />
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity 
+                      style={styles.continueButton}
+                      onPress={() => router.replace('/(tabs)/chat')}
+                    >
+                      <LinearGradient
+                        colors={[COLORS.primary, COLORS.secondary]}
+                        style={styles.continueButtonGradient}
+                      >
+                        <Text style={styles.continueButtonText}>Continue to Chat</Text>
+                        <AntDesign name="arrowright" size={20} color={COLORS.white} />
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </>
             )}
-
-            <TouchableOpacity 
-              style={[styles.submitButton, loading && styles.buttonDisabled]}
-              onPress={handleSubmit}
-              disabled={loading}
-            >
-              <LinearGradient
-                colors={[COLORS.primary, COLORS.secondary]}
-                style={styles.submitButtonGradient}
-              >
-                <Text style={styles.submitButtonText}>
-                  {loading ? 'Saving Profile...' : 'Save Profile'}
-                </Text>
-                {!loading && <AntDesign name="arrowright" size={20} color={COLORS.white} />}
-              </LinearGradient>
-            </TouchableOpacity>
           </ScrollView>
         </SafeAreaView>
 
         <Modal
-          visible={showYearPicker.show}
+          visible={showYearPicker.show && !isSubmitted}
           transparent={true}
           animationType="slide"
         >
@@ -1079,4 +1232,238 @@ const styles = StyleSheet.create({
   picker: {
     height: 200,
   },
+successContainer: {
+  flex: 1,
+  justifyContent: 'center',
+  alignItems: 'center',
+  paddingHorizontal: 24,
+  paddingVertical: 40,
+},
+successCard: {
+  width: '100%',
+  borderRadius: 24,
+  padding: 32,
+  alignItems: 'center',
+  shadowColor: COLORS.shadow,
+  shadowOffset: { width: 0, height: 8 },
+  shadowOpacity: 0.15,
+  shadowRadius: 20,
+  elevation: 10,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+},
+successIconContainer: {
+  position: 'relative',
+  marginBottom: 32,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+successIconBackground: {
+  width: 100,
+  height: 100,
+  borderRadius: 50,
+  justifyContent: 'center',
+  alignItems: 'center',
+  shadowColor: COLORS.primary,
+  shadowOffset: { width: 0, height: 6 },
+  shadowOpacity: 0.3,
+  shadowRadius: 12,
+  elevation: 8,
+  zIndex: 3,
+},
+successIconAnimated: {
+  transform: [{ scale: 1.1 }],
+},
+ripple1: {
+  position: 'absolute',
+  width: 120,
+  height: 120,
+  borderRadius: 60,
+  backgroundColor: COLORS.primary,
+  opacity: 0,
+  zIndex: 1,
+},
+ripple2: {
+  position: 'absolute',
+  width: 140,
+  height: 140,
+  borderRadius: 70,
+  backgroundColor: COLORS.secondary,
+  opacity: 0,
+  zIndex: 0,
+},
+ripple3: {
+  position: 'absolute',
+  width: 160,
+  height: 160,
+  borderRadius: 80,
+  backgroundColor: COLORS.mediumOlive,
+  opacity: 0,
+  zIndex: -1,
+},
+rippleAnimated: {
+  opacity: 0.2,
+  transform: [{ scale: 1.2 }],
+},
+successContent: {
+  alignItems: 'center',
+  width: '100%',
+},
+successTitle: {
+  fontSize: 28,
+  fontWeight: '800',
+  color: COLORS.primary,
+  marginBottom: 12,
+  textAlign: 'center',
+  letterSpacing: -0.5,
+},
+successSubtitle: {
+  fontSize: 16,
+  color: COLORS.textLight,
+  textAlign: 'center',
+  lineHeight: 24,
+  marginBottom: 32,
+  paddingHorizontal: 16,
+},
+successStats: {
+  flexDirection: 'row',
+  backgroundColor: COLORS.gray,
+  borderRadius: 20,
+  padding: 24,
+  marginBottom: 32,
+  width: '100%',
+  alignItems: 'center',
+  justifyContent: 'space-around',
+},
+statItem: {
+  alignItems: 'center',
+  flex: 1,
+},
+statIcon: {
+  backgroundColor: COLORS.white,
+  borderRadius: 25,
+  width: 50,
+  height: 50,
+  justifyContent: 'center',
+  alignItems: 'center',
+  marginBottom: 8,
+  shadowColor: COLORS.shadow,
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.1,
+  shadowRadius: 4,
+  elevation: 2,
+},
+statLabel: {
+  fontSize: 12,
+  color: COLORS.textLight,
+  fontWeight: '500',
+  marginBottom: 4,
+  textTransform: 'uppercase',
+  letterSpacing: 0.5,
+},
+statValue: {
+  fontSize: 18,
+  color: COLORS.text,
+  fontWeight: '700',
+},
+statDivider: {
+  width: 1,
+  height: 40,
+  backgroundColor: COLORS.border,
+  marginHorizontal: 16,
+},
+progressContainer: {
+  width: '100%',
+  alignItems: 'center',
+},
+progressLabel: {
+  fontSize: 14,
+  color: COLORS.textLight,
+  marginBottom: 12,
+  fontWeight: '500',
+},
+progressBar: {
+  width: '100%',
+  height: 6,
+  backgroundColor: COLORS.gray,
+  borderRadius: 3,
+  overflow: 'hidden',
+},
+progressFill: {
+  height: '100%',
+  backgroundColor: COLORS.primary,
+  borderRadius: 3,
+  width: '0%',
+},
+progressFillAnimated: {
+  width: '100%',
+},
+// Enhanced disabled states for better visual consistency
+photoContainerDisabled: {
+  opacity: 0.8,
+},
+yearSelectorDisabled: {
+  backgroundColor: COLORS.gray,
+  opacity: 0.7,
+},
+inputDisabled: {
+  backgroundColor: COLORS.gray,
+  color: COLORS.textLight,
+  borderColor: COLORS.border,
+  opacity: 0.8,
+},
+// Improved submitted actions section
+submittedActions: {
+  flexDirection: 'row',
+  gap: 16,
+  marginTop: 32,
+  marginBottom: 20,
+},
+editButton: {
+  flex: 1,
+  backgroundColor: COLORS.white,
+  borderRadius: 16,
+  paddingVertical: 16,
+  paddingHorizontal: 24,
+  flexDirection: 'row',
+  justifyContent: 'center',
+  alignItems: 'center',
+  gap: 8,
+  borderWidth: 2,
+  borderColor: COLORS.primary,
+  shadowColor: COLORS.shadow,
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.1,
+  shadowRadius: 6,
+  elevation: 3,
+},
+editButtonText: {
+  fontSize: 16,
+  fontWeight: '600',
+  color: COLORS.primary,
+},
+continueButton: {
+  flex: 2,
+  borderRadius: 16,
+  shadowColor: COLORS.primary,
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.3,
+  shadowRadius: 8,
+  elevation: 6,
+},
+continueButtonGradient: {
+  paddingVertical: 16,
+  paddingHorizontal: 24,
+  borderRadius: 16,
+  flexDirection: 'row',
+  justifyContent: 'center',
+  alignItems: 'center',
+  gap: 8,
+},
+continueButtonText: {
+  fontSize: 16,
+  fontWeight: '700',
+  color: COLORS.white,
+  letterSpacing: 0.3,
+},
 });
