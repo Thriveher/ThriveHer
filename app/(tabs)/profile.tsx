@@ -1,7 +1,8 @@
-import React from 'react';
-import { View, Text, ScrollView, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, Image, ActivityIndicator, RefreshControl } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import Navbar from '../components/navbar';
+import ProfileAPI from '../api/getprofile'; // Adjust import path as needed
 
 // Define types for our data
 interface Experience {
@@ -49,68 +50,38 @@ interface ProfileData {
 }
 
 const ProfileScreen = () => {
-  // Profile data for Durva Dongre
-  const profileData: ProfileData = {
-    name: "Durva Dongre",
-    headline: "Computer Engineering Student & AI Enthusiast",
-    currentCompany: "Pillai HOC College of Engineering",
-    location: "Mumbai, India",
-    profileImage: "https://avatars.githubusercontent.com/u/178024340?v=4", // This will be replaced with the provided image
-    about: "Passionate computer engineering student with a keen interest in artificial intelligence and machine learning. Winner of the Asha AI Hackathon. Currently looking for internship opportunities to apply and enhance my technical skills in a real-world setting.",
-    experience: [
-      {
-        title: "Women Head",
-        company: "Pillai HOC College of Engineering",
-        companyLogo: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQK1lOFsZnuC4J5OGRFMIp-LJZ4HvrZbAkv3A&s",
-        duration: "Aug 2023 - Present",
-        location: "Mumbai, India"
+  const [profileData, setProfileData] = useState<ProfileData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchProfileData = async () => {
+    try {
+      setError(null);
+      const response = await ProfileAPI.getTransformedProfile();
+      
+      if (response.success && response.data) {
+        setProfileData(response.data);
+      } else {
+        setError(response.error || 'Failed to load profile data');
       }
-    ],
-    education: [
-      {
-        institution: "Pillai HOC College of Engineering",
-        logo: "https://pbs.twimg.com/profile_images/1151138020738785283/f_Vl5vt6_400x400.png",
-        degree: "Bachelor of Engineering in Computer Engineering",
-        duration: "2022 - 2026"
-      }
-    ],
-    projects: [
-      {
-        name: "Peekaboo",
-        description: "An AI-based Search Engine that utilizes advanced machine learning algorithms to provide more accurate and context-aware search results."
-      }
-    ],
-    skills: [
-      { name: "Python", level: "advanced" },
-      { name: "Machine Learning", level: "intermediate" },
-      { name: "React.js", level: "intermediate" },
-      { name: "JavaScript", level: "intermediate" },
-      { name: "C++", level: "advanced" },
-      { name: "AI Development", level: "intermediate" },
-      { name: "Data Structures", level: "advanced" },
-      { name: "TensorFlow", level: "intermediate" }
-    ],
-    achievements: [
-      {
-        title: "Winner - Asha AI Hackathon",
-        date: "2023"
-      }
-    ]
+    } catch (err) {
+      setError('Network error occurred while fetching profile');
+      console.error('Profile fetch error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const {
-    name,
-    headline,
-    currentCompany,
-    location,
-    profileImage,
-    about,
-    experience,
-    education,
-    projects,
-    skills,
-    achievements
-  } = profileData;
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchProfileData();
+    setRefreshing(false);
+  };
+
+  useEffect(() => {
+    fetchProfileData();
+  }, []);
 
   const styles = {
     // Container styles
@@ -120,6 +91,38 @@ const ProfileScreen = () => {
     },
     scrollView: {
       flex: 1,
+    },
+    
+    // Loading and error states
+    centerContainer: {
+      flex: 1,
+      justifyContent: 'center' as const,
+      alignItems: 'center' as const,
+      padding: 20,
+    },
+    loadingText: {
+      marginTop: 16,
+      fontSize: 16,
+      color: '#49654E',
+      textAlign: 'center' as const,
+    },
+    errorContainer: {
+      backgroundColor: '#ffebee',
+      borderRadius: 8,
+      padding: 16,
+      margin: 12,
+      alignItems: 'center' as const,
+    },
+    errorText: {
+      fontSize: 16,
+      color: '#c62828',
+      textAlign: 'center' as const,
+      marginBottom: 8,
+    },
+    retryText: {
+      fontSize: 14,
+      color: '#49654E',
+      textAlign: 'center' as const,
     },
     
     // Profile header
@@ -183,6 +186,14 @@ const ProfileScreen = () => {
       fontWeight: '600' as const,
       color: '#253528',
       marginBottom: 12,
+    },
+    
+    // Empty state
+    emptyText: {
+      fontSize: 14,
+      color: '#666666',
+      textAlign: 'center' as const,
+      fontStyle: 'italic' as const,
     },
     
     // About section
@@ -285,6 +296,7 @@ const ProfileScreen = () => {
       fontSize: 14,
       fontWeight: '500' as const,
       color: '#253528',
+      flex: 1,
     },
     achievementDate: {
       fontSize: 12,
@@ -342,7 +354,7 @@ const ProfileScreen = () => {
         <Text style={styles.companyName}>{item.company}</Text>
         <View style={styles.experienceDetails}>
           <Text style={styles.experienceDuration}>{item.duration}</Text>
-          <Text style={styles.experienceLocation}> • {item.location}</Text>
+          {item.location && <Text style={styles.experienceLocation}> • {item.location}</Text>}
         </View>
       </View>
     </View>
@@ -390,9 +402,84 @@ const ProfileScreen = () => {
     );
   };
 
+  // Loading state
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color="#49654E" />
+          <Text style={styles.loadingText}>Loading profile...</Text>
+        </View>
+        <Navbar />
+      </View>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <View style={styles.container}>
+        <ScrollView
+          style={styles.scrollView}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+        >
+          <View style={styles.errorContainer}>
+            <Feather name="alert-circle" size={48} color="#c62828" />
+            <Text style={styles.errorText}>{error}</Text>
+            <Text style={styles.retryText}>Pull down to refresh</Text>
+          </View>
+        </ScrollView>
+        <Navbar />
+      </View>
+    );
+  }
+
+  // No profile data state
+  if (!profileData) {
+    return (
+      <View style={styles.container}>
+        <ScrollView
+          style={styles.scrollView}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+        >
+          <View style={styles.centerContainer}>
+            <Feather name="user" size={48} color="#49654E" />
+            <Text style={styles.loadingText}>No profile data found</Text>
+            <Text style={styles.retryText}>Pull down to refresh</Text>
+          </View>
+        </ScrollView>
+        <Navbar />
+      </View>
+    );
+  }
+
+  const {
+    name,
+    headline,
+    currentCompany,
+    location,
+    profileImage,
+    about,
+    experience,
+    education,
+    projects,
+    skills,
+    achievements
+  } = profileData;
+
   return (
     <View style={styles.container}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.scrollView} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
         {/* Profile Card */}
         <View style={styles.profileHeader}>
           {/* Profile Image */}
@@ -405,55 +492,71 @@ const ProfileScreen = () => {
             <Text style={styles.name}>{name}</Text>
             <Text style={styles.headline}>{headline}</Text>
             
-            <View style={styles.infoRow}>
-              <Feather name="briefcase" size={14} color="#49654E" style={styles.infoIcon} />
-              <Text style={styles.infoText}>{currentCompany}</Text>
-            </View>
+            {currentCompany && (
+              <View style={styles.infoRow}>
+                <Feather name="briefcase" size={14} color="#49654E" style={styles.infoIcon} />
+                <Text style={styles.infoText}>{currentCompany}</Text>
+              </View>
+            )}
             
-            <View style={styles.infoRow}>
-              <Feather name="map-pin" size={14} color="#49654E" style={styles.infoIcon} />
-              <Text style={styles.infoText}>{location}</Text>
-            </View>
+            {location && (
+              <View style={styles.infoRow}>
+                <Feather name="map-pin" size={14} color="#49654E" style={styles.infoIcon} />
+                <Text style={styles.infoText}>{location}</Text>
+              </View>
+            )}
           </View>
         </View>
 
         {/* About Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>About</Text>
-          <Text style={styles.aboutText}>{about}</Text>
-        </View>
+        {about && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>About</Text>
+            <Text style={styles.aboutText}>{about}</Text>
+          </View>
+        )}
 
         {/* Skills Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Skills</Text>
-          <View style={styles.skillsContainer}>
-            {skills.map(renderSkillItem)}
+        {skills && skills.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Skills</Text>
+            <View style={styles.skillsContainer}>
+              {skills.map(renderSkillItem)}
+            </View>
           </View>
-        </View>
+        )}
 
         {/* Achievement Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Achievements</Text>
-          {achievements.map(renderAchievementItem)}
-        </View>
+        {achievements && achievements.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Achievements</Text>
+            {achievements.map(renderAchievementItem)}
+          </View>
+        )}
 
         {/* Projects Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Projects</Text>
-          {projects.map(renderProjectItem)}
-        </View>
+        {projects && projects.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Projects</Text>
+            {projects.map(renderProjectItem)}
+          </View>
+        )}
 
         {/* Experience Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Experience</Text>
-          {experience.map(renderExperienceItem)}
-        </View>
+        {experience && experience.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Experience</Text>
+            {experience.map(renderExperienceItem)}
+          </View>
+        )}
 
         {/* Education Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Education</Text>
-          {education.map(renderEducationItem)}
-        </View>
+        {education && education.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Education</Text>
+            {education.map(renderEducationItem)}
+          </View>
+        )}
         
         {/* Extra space at bottom for navbar */}
         <View style={styles.navbarSpacing} />

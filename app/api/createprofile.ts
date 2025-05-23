@@ -297,145 +297,10 @@ private static convertFormDataToProfileData(formData: FormData): ProfileData {
   };
 }
 
-// Generate fallback content when AI enhancement fails
-private static generateFallbackContent(profileData: ProfileData): GroqEnhancementResponse {
-  const fallbackSummary = this.generateFallbackSummary(profileData);
-  const fallbackStrengths = this.generateFallbackStrengths(profileData);
-  
-  const enhanced_education = profileData.education?.map(edu => ({
-    institution: edu.institution,
-    degree: edu.degree,
-    field_of_study: this.extractFieldFromDegree(edu.degree),
-    description: `I studied ${edu.degree} at ${edu.institution}, where I gained comprehensive knowledge and developed essential skills in my field of study.`,
-    relevant_coursework: this.generateRelevantCoursework(edu.degree),
-    projects: [`Academic project related to ${edu.degree}`, `Research work in ${this.extractFieldFromDegree(edu.degree)}`]
-  })) || [];
-
-  const enhanced_experience = profileData.experience?.map(exp => ({
-    company: exp.company,
-    position: exp.position,
-    description: `In my role as ${exp.position} at ${exp.company}, I contributed to important projects and developed valuable professional skills that enhanced my expertise in the field.`,
-    skills_used: this.generateSkillsFromPosition(exp.position),
-    key_projects: [`Project management at ${exp.company}`, `Strategic initiatives in ${exp.position} role`],
-    achievements: [`Successfully fulfilled ${exp.position} responsibilities`, `Contributed to team objectives at ${exp.company}`]
-  })) || [];
-
-  return {
-    summary: fallbackSummary,
-    strengths: fallbackStrengths,
-    enhanced_education,
-    enhanced_experience
-  };
-}
-
-private static generateFallbackSummary(profileData: ProfileData): string {
-  const hasEducation = profileData.education && profileData.education.length > 0;
-  const hasExperience = profileData.experience && profileData.experience.length > 0;
-  const hasSkills = profileData.skills && profileData.skills.length > 0;
-
-  let summary = `I am a dedicated professional with a strong commitment to excellence and continuous learning. `;
-
-  if (hasEducation) {
-    const education = profileData.education[0];
-    summary += `I hold a ${education.degree} from ${education.institution}, which provided me with a solid foundation in my field. `;
-  }
-
-  if (hasExperience) {
-    const experience = profileData.experience[0];
-    summary += `My experience as ${experience.position} at ${experience.company} has allowed me to develop practical skills and contribute meaningfully to organizational objectives. `;
-  }
-
-  if (hasSkills) {
-    summary += `I possess expertise in ${profileData.skills.slice(0, 3).join(', ')} and am passionate about applying these skills to create value. `;
-  }
-
-  summary += `I am eager to bring my knowledge and enthusiasm to new challenges and opportunities.`;
-
-  return summary;
-}
-
-private static generateFallbackStrengths(profileData: ProfileData): string[] {
-  const baseStrengths = [
-    'Problem-solving abilities',
-    'Team collaboration',
-    'Communication skills',
-    'Adaptability',
-    'Attention to detail',
-    'Time management',
-    'Critical thinking',
-    'Leadership potential'
-  ];
-
-  // Add skill-based strengths if available
-  if (profileData.skills && profileData.skills.length > 0) {
-    profileData.skills.forEach(skill => {
-      baseStrengths.push(`${skill} expertise`);
-    });
-  }
-
-  return baseStrengths.slice(0, 8);
-}
-
-private static extractFieldFromDegree(degree: string): string {
-  const degreeWords = degree.toLowerCase();
-  
-  if (degreeWords.includes('computer') || degreeWords.includes('software')) return 'Computer Science';
-  if (degreeWords.includes('business') || degreeWords.includes('management')) return 'Business Administration';
-  if (degreeWords.includes('engineering')) return 'Engineering';
-  if (degreeWords.includes('science')) return 'Science';
-  if (degreeWords.includes('arts') || degreeWords.includes('liberal')) return 'Liberal Arts';
-  if (degreeWords.includes('psychology')) return 'Psychology';
-  if (degreeWords.includes('marketing')) return 'Marketing';
-  if (degreeWords.includes('finance')) return 'Finance';
-  
-  return 'General Studies';
-}
-
-private static generateRelevantCoursework(degree: string): string[] {
-  const degreeWords = degree.toLowerCase();
-  
-  if (degreeWords.includes('computer') || degreeWords.includes('software')) {
-    return ['Data Structures', 'Algorithms', 'Software Engineering', 'Database Systems', 'Web Development'];
-  }
-  if (degreeWords.includes('business')) {
-    return ['Strategic Management', 'Financial Analysis', 'Marketing Principles', 'Operations Management', 'Leadership'];
-  }
-  if (degreeWords.includes('engineering')) {
-    return ['Engineering Mathematics', 'Design Principles', 'Project Management', 'Technical Analysis', 'Systems Design'];
-  }
-  
-  return ['Core Curriculum', 'Research Methods', 'Critical Analysis', 'Communication', 'Ethics'];
-}
-
-private static generateSkillsFromPosition(position: string): string[] {
-  const positionWords = position.toLowerCase();
-  
-  if (positionWords.includes('developer') || positionWords.includes('programmer')) {
-    return ['Programming', 'Software Development', 'Problem Solving', 'Code Review', 'Testing'];
-  }
-  if (positionWords.includes('manager') || positionWords.includes('lead')) {
-    return ['Team Leadership', 'Project Management', 'Strategic Planning', 'Communication', 'Decision Making'];
-  }
-  if (positionWords.includes('analyst')) {
-    return ['Data Analysis', 'Research', 'Report Writing', 'Critical Thinking', 'Problem Solving'];
-  }
-  if (positionWords.includes('designer')) {
-    return ['Design Software', 'Creative Problem Solving', 'Visual Communication', 'User Experience', 'Prototyping'];
-  }
-  
-  return ['Professional Communication', 'Time Management', 'Teamwork', 'Adaptability', 'Organization'];
-}
-
 // Enhanced Groq API call with robust error handling and retries
 private static async enhanceProfileWithGroq(profileData: ProfileData): Promise<GroqEnhancementResponse> {
   const maxRetries = 3;
   let lastError: Error | null = null;
-
-  // Check if Groq is properly configured
-  if (!this.GROQ_API_KEY || this.GROQ_API_KEY.startsWith('gsk_YOUR_GROQ_API_KEY')) {
-    console.warn('Groq API key not configured, using fallback content');
-    return this.generateFallbackContent(profileData);
-  }
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -454,6 +319,9 @@ ${JSON.stringify({
 
 Generate detailed, first-person content that sounds authentic and professional. Make educated assumptions based on typical experiences at similar institutions/companies, but keep everything realistic.
 
+For certificates, generate relevant professional certifications that would be valuable for someone with this background.
+For interests, generate professional and personal interests that align with their field and profile.
+
 Respond with a JSON object following this exact structure (no additional text, only JSON):
 {
   "summary": "A compelling 4-5 sentence professional summary written in first person",
@@ -465,19 +333,27 @@ Respond with a JSON object following this exact structure (no additional text, o
       "field_of_study": "Relevant field based on degree",
       "description": "3-4 sentences in first person about education experience",
       "relevant_coursework": ["Course 1", "Course 2", "Course 3", "Course 4", "Course 5"],
-      "projects": ["Academic project 1", "Academic project 2", "Academic project 3"]
+      "projects": ["Project 1", "Project 2", "Project 3"]
     }
   ],
   "enhanced_experience": [
     {
       "company": "Same as input",
       "position": "Same as input", 
-      "description": "4-5 sentences in first person about work experience",
+      "description": "4-5 sentences in first person about work experience and what you learned",
       "skills_used": ["Skill 1", "Skill 2", "Skill 3", "Skill 4", "Skill 5"],
       "key_projects": ["Project 1", "Project 2", "Project 3"],
       "achievements": ["Achievement 1", "Achievement 2", "Achievement 3"]
     }
-  ]
+  ],
+  "certificates": [
+    {
+      "name": "Certificate Name",
+      "issuer": "Issuing Organization",
+      "description": "Brief description of what this certificate demonstrates or validates"
+    }
+  ],
+  "interests": ["Professional Interest 1", "Personal Interest 1", "Interest 2", "Interest 3", "Interest 4"]
 }`;
 
       const completion = await groq.chat.completions.create({
@@ -534,9 +410,8 @@ Respond with a JSON object following this exact structure (no additional text, o
     }
   }
 
-  // If all attempts failed, use fallback content
-  console.warn('All Groq enhancement attempts failed, using fallback content:', lastError?.message);
-  return this.generateFallbackContent(profileData);
+  // If all attempts failed, throw error instead of using fallback
+  throw new Error(`Failed to enhance profile with AI after ${maxRetries} attempts: ${lastError?.message}`);
 }
 
 // Create comprehensive profile with extensive AI enhancement
@@ -564,26 +439,26 @@ static async createProfile(formData: FormData): Promise<ApiResponse> {
     const profileData = this.convertFormDataToProfileData(formData);
     console.log('Profile data converted:', profileData);
 
-    // Enhance profile data with comprehensive generation (with fallback)
+    // Enhance profile data with comprehensive generation
     const enhancedData = await this.enhanceProfileWithGroq(profileData);
     console.log('Profile data enhanced');
 
     // Merge original data with enhanced data
-    const enhancedEducation = profileData.education?.map((edu, index) => ({
+    const enhancedEducation = (profileData.education || []).map((edu, index) => ({
       ...edu,
-      description: enhancedData.enhanced_education[index]?.description || `During my time at ${edu.institution}, I gained valuable knowledge and skills that have shaped my professional development.`,
-      field_of_study: enhancedData.enhanced_education[index]?.field_of_study || this.extractFieldFromDegree(edu.degree),
+      description: enhancedData.enhanced_education[index]?.description || undefined,
+      field_of_study: enhancedData.enhanced_education[index]?.field_of_study || undefined,
       relevant_coursework: enhancedData.enhanced_education[index]?.relevant_coursework || [],
       projects: enhancedData.enhanced_education[index]?.projects || []
-    })) || [];
+    }));
 
-    const enhancedExperience = profileData.experience?.map((exp, index) => ({
+    const enhancedExperience = (profileData.experience || []).map((exp, index) => ({
       ...exp,
-      description: enhancedData.enhanced_experience[index]?.description || `In my role as ${exp.position} at ${exp.company}, I contributed to important projects and developed valuable professional skills.`,
+      description: enhancedData.enhanced_experience[index]?.description || undefined,
       skills_used: enhancedData.enhanced_experience[index]?.skills_used || [],
       key_projects: enhancedData.enhanced_experience[index]?.key_projects || [],
       achievements: enhancedData.enhanced_experience[index]?.achievements || []
-    })) || [];
+    }));
 
     // Prepare profile payload
     const profilePayload: EnhancedProfilePayload = {
@@ -598,9 +473,12 @@ static async createProfile(formData: FormData): Promise<ApiResponse> {
       profile_photo: profileData.profilePhoto || null,
       education: enhancedEducation,
       experience: enhancedExperience,
-      skills: profileData.skills || [],
+      skills: (profileData.skills || []),
       summary: enhancedData.summary,
       strengths: enhancedData.strengths || [],
+      certifications: enhancedData.certificates || [],
+      languages: ['English'], // Default to English
+      interests: enhancedData.interests || [],
       onboarding_completed: true,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -681,7 +559,7 @@ static async updateProfile(updates: Partial<ProfileData>): Promise<ApiResponse> 
       throw new Error('User not authenticated');
     }
 
-    // If updating education or experience, enhance with generation (with fallback)
+    // If updating education or experience, enhance with generation
     let enhancedUpdates = { ...updates };
     
     if (updates.education || updates.experience || updates.skills) {
@@ -833,7 +711,10 @@ static async generateResumeData(userId?: string): Promise<ApiResponse> {
       strengths: profile.strengths,
       education: profile.education,
       experience: profile.experience,
-      skills: profile.skills
+      skills: profile.skills,
+      certifications: profile.certifications,
+      languages: profile.languages,
+      interests: profile.interests
     };
 
     return {
@@ -864,7 +745,7 @@ static async generateProfileReport(userId?: string): Promise<ApiResponse> {
     
     // Calculate profile completeness
     const fields = [
-      'name', 'email', 'summary', 'education', 'experience', 'skills', 'strengths'
+      'name', 'email', 'summary', 'education', 'experience', 'skills', 'strengths', 'certifications', 'interests'
     ];
     
     const completedFields = fields.filter(field => {
@@ -881,6 +762,8 @@ static async generateProfileReport(userId?: string): Promise<ApiResponse> {
       total_skills: profile.skills?.length || 0,
       education_count: profile.education?.length || 0,
       experience_count: profile.experience?.length || 0,
+      certifications_count: profile.certifications?.length || 0,
+      interests_count: profile.interests?.length || 0,
       profile_strength: completeness >= 80 ? 'Strong' : completeness >= 60 ? 'Good' : 'Needs Improvement'
     };
 
@@ -908,7 +791,7 @@ static validateConfiguration(): { isValid: boolean; errors: string[] } {
   const supabaseAnonKey = this.SUPABASE_ANON_KEY;
   
   if (!groqApiKey || groqApiKey.startsWith('gsk_YOUR_GROQ_API_KEY')) {
-    errors.push('Groq API key not configured - will use fallback content');
+    errors.push('Groq API key not configured');
   }
   
   if (!supabaseUrl || supabaseUrl.includes('YOUR_SUPABASE_URL')) {
@@ -923,4 +806,5 @@ static validateConfiguration(): { isValid: boolean; errors: string[] } {
     isValid: errors.length === 0,
     errors
   };
+}
 }
