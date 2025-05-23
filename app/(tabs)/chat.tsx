@@ -4,9 +4,15 @@ import { router } from 'expo-router';
 import { ChatHistoryItem, getDetailedChatHistory } from '../api/getchathistory';
 import BottomNavbar from '../components/navbar';
 import { MaterialIcons } from '@expo/vector-icons';
-import { supabase } from '../../lib/supabase';
+import { createClient } from '@supabase/supabase-js';
 import { createNewChatWithMessage } from '../api/chatapi';
 import { Platform } from 'react-native';
+
+// Hardcoded Supabase configuration
+const supabaseUrl = 'https://ibwjjwzomoyhkxugmmmw.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlid2pqd3pvbW95aGt4dWdtbW13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ4NzkwODgsImV4cCI6MjA2MDQ1NTA4OH0.RmnNBQh_1KJo0TgCjs72aBoxWoOsd_vWjNeIHRfVXac';
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const ChatHistoryScreen = () => {
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
@@ -44,9 +50,33 @@ const ChatHistoryScreen = () => {
         return;
       }
 
+      // Check if user profile exists
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+
+      if (profileError && profileError.code !== 'PGRST116') {
+        console.error('Profile check error:', profileError);
+        Alert.alert('Error', 'Failed to verify user profile. Please try again.');
+        return;
+      }
+
+      if (!profile) {
+        // User doesn't have a profile, redirect to onboarding
+        Alert.alert(
+          'Complete Setup',
+          'Please complete your profile setup to continue.',
+          [{ text: 'OK', onPress: () => router.push('/onboard') }]
+        );
+        return;
+      }
+
       setUserId(session.user.id);
     } catch (error) {
       console.error('Failed to check authentication status:', error);
+      Alert.alert('Error', 'Authentication check failed. Please try again.');
     }
   };
 
