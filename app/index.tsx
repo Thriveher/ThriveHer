@@ -64,6 +64,33 @@ export default function WelcomePage() {
     }
   }, [response]);
 
+  const checkUserProfile = async (userId: string) => {
+    try {
+      console.log('Checking user profile for UUID:', userId);
+      
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+      
+      if (error) {
+        console.log('Profile not found or error:', error.message);
+        return false;
+      }
+      
+      if (data) {
+        console.log('Profile found:', data);
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Error checking profile:', error);
+      return false;
+    }
+  };
+
   const handleGoogleSignIn = async (idToken: string) => {
     if (!idToken) {
       console.error('No ID token received');
@@ -88,8 +115,23 @@ export default function WelcomePage() {
         throw error;
       }
       
+      if (!data.user) {
+        throw new Error('No user data received');
+      }
+      
       console.log('User signed in:', data.user);
-      router.replace('/(tabs)/chat');
+      
+      // Check if user profile exists in profiles table
+      const profileExists = await checkUserProfile(data.user.id);
+      
+      if (profileExists) {
+        console.log('Profile exists, redirecting to chat');
+        router.replace('/(tabs)/chat');
+      } else {
+        console.log('Profile does not exist, redirecting to onboard');
+        router.replace('/onboard');
+      }
+      
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to sign in';
       console.error('Error signing in with Google:', errorMessage);

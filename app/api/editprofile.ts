@@ -1,14 +1,93 @@
 import { createClient } from '@supabase/supabase-js';
 
+// Type definitions
+interface Experience {
+  title?: string;
+  company?: string;
+  companyLogo?: string;
+  duration?: string;
+  location?: string;
+  position?: string;
+  start_date?: string;
+  end_date?: string | null;
+  key_projects?: string[];
+}
+
+interface Education {
+  institution?: string;
+  logo?: string;
+  degree?: string;
+  duration?: string;
+  start_date?: string;
+  end_date?: string;
+}
+
+interface Project {
+  name?: string;
+  description?: string;
+}
+
+interface Skill {
+  name?: string;
+  level?: string;
+}
+
+interface Achievement {
+  title?: string;
+  date?: string;
+}
+
+interface Certification {
+  name?: string;
+  issuer?: string;
+}
+
+interface UIProfileData {
+  name?: string;
+  headline?: string;
+  about?: string;
+  location?: string;
+  profileImage?: string;
+  currentCompany?: string;
+  experience?: Experience[];
+  education?: Education[];
+  projects?: Project[];
+  skills?: (string | Skill)[];
+  achievements?: Achievement[];
+}
+
+interface DatabaseProfileData {
+  name?: string;
+  summary?: string;
+  location?: string;
+  profile_photo?: string | null;
+  experience?: Experience[];
+  education?: Education[];
+  skills?: string[];
+  certifications?: Certification[];
+}
+
+interface ProfileRecord extends DatabaseProfileData {
+  user_id: string;
+  updated_at: string;
+  created_at?: string;
+}
+
+interface ApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  message: string;
+}
+
 // Hardcoded Supabase configuration
 const supabaseUrl = 'https://ibwjjwzomoyhkxugmmmw.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlid2pqd3pvbW95aGt4dWdtbW13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ4NzkwODgsImV4cCI6MjA2MDQ1NTA4OH0.RmnNBQh_1KJo0TgCjs72aBoxWoOsd_vWjNeIHRfVXac';
-
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 class ProfileAPI {
   // Get current user's complete profile
-  static async getProfile() {
+  static async getProfile(): Promise<ApiResponse<ProfileRecord | null>> {
     try {
       // Get current authenticated user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -16,18 +95,18 @@ class ProfileAPI {
       if (userError || !user) {
         throw new Error('User not authenticated');
       }
-
+      
       // Fetch profile data for the authenticated user
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('user_id', user.id)
         .single();
-
+      
       if (error && error.code !== 'PGRST116') {
         throw new Error(`Database error: ${error.message}`);
       }
-
+      
       return {
         success: true,
         data: data || null,
@@ -44,15 +123,15 @@ class ProfileAPI {
   }
 
   // Transform UI profile data to database format
-  static transformUIToDatabase(profileData) {
+  static transformUIToDatabase(profileData: UIProfileData | null): DatabaseProfileData | null {
     if (!profileData) return null;
-
+    
     return {
       name: profileData.name || '',
       summary: profileData.headline || profileData.about || '',
       location: profileData.location || '',
       profile_photo: profileData.profileImage || null,
-      experience: profileData.experience?.map(exp => ({
+      experience: profileData.experience?.map((exp: Experience) => ({
         position: exp.title || '',
         company: exp.company || '',
         location: exp.location || '',
@@ -62,7 +141,7 @@ class ProfileAPI {
           : null,
         key_projects: [] // Will be populated from projects if needed
       })) || [],
-      education: profileData.education?.map(edu => ({
+      education: profileData.education?.map((edu: Education) => ({
         institution: edu.institution || '',
         degree: edu.degree || '',
         start_date: edu.duration ? edu.duration.split(' - ')[0] : '',
@@ -70,10 +149,10 @@ class ProfileAPI {
           ? edu.duration.split(' - ')[1] 
           : edu.duration || ''
       })) || [],
-      skills: profileData.skills?.map(skill => 
-        typeof skill === 'string' ? skill : skill.name
+      skills: profileData.skills?.map((skill: string | Skill) => 
+        typeof skill === 'string' ? skill : skill.name || ''
       ) || [],
-      certifications: profileData.achievements?.map(achievement => ({
+      certifications: profileData.achievements?.map((achievement: Achievement) => ({
         name: achievement.title || '',
         issuer: achievement.date || ''
       })) || []
@@ -81,9 +160,9 @@ class ProfileAPI {
   }
 
   // Transform database profile to match the expected format for the UI
-  static transformProfileData(profileData) {
+  static transformProfileData(profileData: ProfileRecord | null): UIProfileData | null {
     if (!profileData) return null;
-
+    
     return {
       name: profileData.name || '',
       headline: profileData.summary || '',
@@ -91,7 +170,7 @@ class ProfileAPI {
       location: profileData.location || '',
       profileImage: profileData.profile_photo || 'https://via.placeholder.com/100x100/e8f4e9/49654E?text=Profile',
       about: profileData.summary || '',
-      experience: profileData.experience?.map(exp => ({
+      experience: profileData.experience?.map((exp: Experience) => ({
         title: exp.position || '',
         company: exp.company || '',
         companyLogo: 'https://via.placeholder.com/40x40/e8f4e9/49654E?text=Co',
@@ -102,7 +181,7 @@ class ProfileAPI {
           : '',
         location: exp.location || ''
       })) || [],
-      education: profileData.education?.map(edu => ({
+      education: profileData.education?.map((edu: Education) => ({
         institution: edu.institution || '',
         logo: 'https://via.placeholder.com/40x40/e8f4e9/49654E?text=Edu',
         degree: edu.degree || '',
@@ -110,29 +189,29 @@ class ProfileAPI {
           ? `${edu.start_date} - ${edu.end_date}` 
           : edu.start_date || ''
       })) || [],
-      projects: profileData.experience?.reduce((projects, exp) => {
+      projects: profileData.experience?.reduce((projects: Project[], exp: Experience) => {
         if (exp.key_projects) {
-          const expProjects = exp.key_projects.map(project => ({
+          const expProjects = exp.key_projects.map((project: string) => ({
             name: project,
-            description: `Project completed during tenure at ${exp.company}`
+            description: `Project completed during tenure at ${exp.company || 'Unknown Company'}`
           }));
           return [...projects, ...expProjects];
         }
         return projects;
       }, []) || [],
-      skills: profileData.skills?.map(skill => ({
+      skills: profileData.skills?.map((skill: string) => ({
         name: skill,
         level: 'intermediate' // Default level since database doesn't store skill levels
       })) || [],
-      achievements: profileData.certifications?.map(cert => ({
-        title: cert.name,
-        date: cert.issuer
+      achievements: profileData.certifications?.map((cert: Certification) => ({
+        title: cert.name || '',
+        date: cert.issuer || ''
       })) || []
     };
   }
 
   // Save/Update profile data
-  static async saveProfile(profileData) {
+  static async saveProfile(profileData: UIProfileData): Promise<ApiResponse<ProfileRecord>> {
     try {
       // Get current authenticated user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -140,24 +219,24 @@ class ProfileAPI {
       if (userError || !user) {
         throw new Error('User not authenticated');
       }
-
+      
       // Transform UI data to database format
       const databaseData = this.transformUIToDatabase(profileData);
       
       // Add user_id and updated_at timestamp
-      const dataToSave = {
+      const dataToSave: Partial<ProfileRecord> = {
         ...databaseData,
         user_id: user.id,
         updated_at: new Date().toISOString()
       };
-
+      
       // Check if profile already exists
       const { data: existingProfile } = await supabase
         .from('profiles')
         .select('id')
         .eq('user_id', user.id)
         .single();
-
+      
       let result;
       
       if (existingProfile) {
@@ -170,18 +249,21 @@ class ProfileAPI {
           .single();
       } else {
         // Create new profile
-        dataToSave.created_at = new Date().toISOString();
+        const newProfileData = {
+          ...dataToSave,
+          created_at: new Date().toISOString()
+        };
         result = await supabase
           .from('profiles')
-          .insert([dataToSave])
+          .insert([newProfileData])
           .select()
           .single();
       }
-
+      
       if (result.error) {
         throw new Error(`Database error: ${result.error.message}`);
       }
-
+      
       return {
         success: true,
         data: result.data,
@@ -198,7 +280,7 @@ class ProfileAPI {
   }
 
   // Update specific profile fields
-  static async updateProfileField(fieldName, fieldValue) {
+  static async updateProfileField(fieldName: string, fieldValue: any): Promise<ApiResponse<ProfileRecord>> {
     try {
       // Get current authenticated user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -206,23 +288,23 @@ class ProfileAPI {
       if (userError || !user) {
         throw new Error('User not authenticated');
       }
-
+      
       const updateData = {
         [fieldName]: fieldValue,
         updated_at: new Date().toISOString()
       };
-
+      
       const { data, error } = await supabase
         .from('profiles')
         .update(updateData)
         .eq('user_id', user.id)
         .select()
         .single();
-
+      
       if (error) {
         throw new Error(`Database error: ${error.message}`);
       }
-
+      
       return {
         success: true,
         data: data,
@@ -239,7 +321,7 @@ class ProfileAPI {
   }
 
   // Delete profile
-  static async deleteProfile() {
+  static async deleteProfile(): Promise<ApiResponse<void>> {
     try {
       // Get current authenticated user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -247,16 +329,16 @@ class ProfileAPI {
       if (userError || !user) {
         throw new Error('User not authenticated');
       }
-
+      
       const { error } = await supabase
         .from('profiles')
         .delete()
         .eq('user_id', user.id);
-
+      
       if (error) {
         throw new Error(`Database error: ${error.message}`);
       }
-
+      
       return {
         success: true,
         message: 'Profile deleted successfully'
@@ -272,14 +354,14 @@ class ProfileAPI {
   }
 
   // Get transformed profile data ready for UI consumption
-  static async getTransformedProfile() {
+  static async getTransformedProfile(): Promise<ApiResponse<UIProfileData | null>> {
     try {
       const response = await this.getProfile();
       
       if (!response.success) {
         return response;
       }
-
+      
       const transformedData = this.transformProfileData(response.data);
       
       return {
@@ -298,7 +380,7 @@ class ProfileAPI {
   }
 
   // Batch update multiple profile sections
-  static async batchUpdateProfile(updates) {
+  static async batchUpdateProfile(updates: Partial<DatabaseProfileData>): Promise<ApiResponse<ProfileRecord>> {
     try {
       // Get current authenticated user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -306,23 +388,23 @@ class ProfileAPI {
       if (userError || !user) {
         throw new Error('User not authenticated');
       }
-
+      
       const updateData = {
         ...updates,
         updated_at: new Date().toISOString()
       };
-
+      
       const { data, error } = await supabase
         .from('profiles')
         .update(updateData)
         .eq('user_id', user.id)
         .select()
         .single();
-
+      
       if (error) {
         throw new Error(`Database error: ${error.message}`);
       }
-
+      
       return {
         success: true,
         data: data,
