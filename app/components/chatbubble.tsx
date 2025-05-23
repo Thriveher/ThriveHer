@@ -1,163 +1,329 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Linking } from 'react-native';
-import { Feather } from '@expo/vector-icons';
-
-// Interface aligned perfectly with the API structure
-interface JobData {
-  job_id: string;
-  job_title: string;
-  employer_name: string;
-  employer_logo: string | null;
-  job_city: string | null;
-  job_state: string | null;
-  job_country: string | null;
-  job_apply_link: string;
-  job_employment_type: string | null;
-  job_salary_currency: string | null;
-  job_salary_min: number | null;
-  job_salary_max: number | null;
-  job_salary_period: string | null;
-  experience_level?: string;
-}
+import { View, Text, StyleSheet, Linking, Alert } from 'react-native';
 
 interface MessageBubbleProps {
   message: string;
   isUser: boolean;
   timestamp: string;
-  jobData?: JobData[];
-  isJobSearch?: boolean;
-  onJobCardPress?: (jobId: string) => void;
 }
 
 const MessageBubble = ({
   message,
   isUser,
-  timestamp,
-  jobData,
-  isJobSearch,
-  onJobCardPress
+  timestamp
 }: MessageBubbleProps) => {
   
-  // Safe function to open URLs
-  const openJobLink = (url: string) => {
-    if (!url) return;
-    
-    // Validate URL format
+  // Handle link press
+  const handleLinkPress = async (url: string) => {
     try {
-      const validUrl = url.startsWith('http') ? url : `https://${url}`;
-      Linking.canOpenURL(validUrl).then(supported => {
-        if (supported) {
-          Linking.openURL(validUrl);
-        } else {
-          console.log("Cannot open URL: " + validUrl);
-        }
-      }).catch(err => console.error('Error checking link:', err));
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert('Error', 'Unable to open this link');
+      }
     } catch (error) {
-      console.error('Invalid URL format:', error);
+      Alert.alert('Error', 'Failed to open link');
     }
   };
-  
-  // Format salary range safely
-  const formatSalary = (job: JobData): string => {
-    if (job.job_salary_min && job.job_salary_max) {
-      const currency = job.job_salary_currency || '$';
-      const period = job.job_salary_period ? ` per ${job.job_salary_period}` : '';
-      return `${currency}${job.job_salary_min.toLocaleString()}-${job.job_salary_max.toLocaleString()}${period}`;
-    }
-    return 'Salary not specified';
-  };
-  
-  // Format location safely
-  const formatLocation = (job: JobData): string => {
-    const locationParts = [job.job_city, job.job_state, job.job_country].filter(Boolean);
-    return locationParts.length > 0 ? locationParts.join(', ') : 'Remote/Unspecified';
-  };
-  
-  // If this is a job search response from the bot, render job cards
-  if (!isUser && isJobSearch && jobData && jobData.length > 0) {
-    return (
-      <View style={styles.jobCardsContainer}>
-        <Text style={styles.jobResultsTitle}>Job Search Results</Text>
-        {jobData.map(job => (
-          <View 
-            style={styles.jobCard}
-            key={job.job_id}
-          >
-            <View style={styles.jobCardHeader}>
-              <View style={styles.logoContainer}>
-                {job.employer_logo ? (
-                  <Image
-                    source={{ uri: job.employer_logo }}
-                    style={styles.companyLogo}
-                    defaultSource={require('../../assets/images/placeholder-logo.jpeg')}
-                  />
-                ) : (
-                  <View style={styles.placeholderLogo}>
-                    <Text style={styles.placeholderText}>
-                      {job.employer_name.charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                )}
-              </View>
-              <View style={styles.jobTitleContainer}>
-                <Text style={styles.jobTitle} numberOfLines={1}>{job.job_title}</Text>
-                <Text style={styles.jobCompany} numberOfLines={1}>{job.employer_name}</Text>
-              </View>
-            </View>
-            
-            <View style={styles.jobCardDetails}>
-              <View style={styles.jobCardRow}>
-                <Feather name="map-pin" size={14} color="#49654E" />
-                <Text style={styles.jobLocation} numberOfLines={1}>{formatLocation(job)}</Text>
-              </View>
-              <View style={styles.jobCardRow}>
-                <Feather name="dollar-sign" size={14} color="#49654E" />
-                <Text style={styles.jobSalary} numberOfLines={1}>{formatSalary(job)}</Text>
-              </View>
-              {job.job_employment_type && (
-                <View style={styles.jobCardRow}>
-                  <Feather name="briefcase" size={14} color="#49654E" />
-                  <Text style={styles.jobType} numberOfLines={1}>{job.job_employment_type}</Text>
-                </View>
-              )}
-              {job.experience_level && (
-                <View style={styles.jobCardRow}>
-                  <Feather name="award" size={14} color="#49654E" />
-                  <Text style={styles.jobExperience} numberOfLines={1}>{job.experience_level}</Text>
-                </View>
-              )}
-            </View>
-            
-            <View style={styles.buttonContainer}>
-              <TouchableOpacity 
-                style={styles.jobViewButton}
-                onPress={() => onJobCardPress && onJobCardPress(job.job_id)}
-              >
-                <Text style={styles.jobViewText}>View Details</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.jobApplyButton}
-                onPress={() => openJobLink(job.job_apply_link)}
-              >
-                <Text style={styles.jobApplyText}>Apply Now</Text>
-              </TouchableOpacity>
-            </View>
+
+  // Simple markdown parser for basic formatting
+  const parseMarkdown = (text: string) => {
+    const elements: JSX.Element[] = [];
+    const lines = text.split('\n');
+    let key = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      // Handle headers
+      if (line.startsWith('# ')) {
+        elements.push(
+          <Text key={key++} style={styles.h1}>
+            {line.substring(2)}
+          </Text>
+        );
+      } else if (line.startsWith('## ')) {
+        elements.push(
+          <Text key={key++} style={styles.h2}>
+            {line.substring(3)}
+          </Text>
+        );
+      } else if (line.startsWith('### ')) {
+        elements.push(
+          <Text key={key++} style={styles.h3}>
+            {line.substring(4)}
+          </Text>
+        );
+      }
+      // Handle code blocks
+      else if (line.startsWith('```')) {
+        const codeLines = [];
+        i++; // Skip the opening ```
+        while (i < lines.length && !lines[i].startsWith('```')) {
+          codeLines.push(lines[i]);
+          i++;
+        }
+        elements.push(
+          <View key={key++} style={styles.codeBlock}>
+            <Text style={styles.codeText}>
+              {codeLines.join('\n')}
+            </Text>
           </View>
-        ))}
-      </View>
-    );
-  }
-  
-  // If this is a job search request with no results
-  if (!isUser && isJobSearch && (!jobData || jobData.length === 0)) {
-    return (
-      <View style={styles.noJobsContainer}>
-        <Text style={styles.noJobsText}>No job results found</Text>
-      </View>
-    );
-  }
-  
-  // Default message bubble for regular messages
+        );
+      }
+      // Handle blockquotes
+      else if (line.startsWith('> ')) {
+        elements.push(
+          <View key={key++} style={styles.blockquote}>
+            <Text style={styles.blockquoteText}>
+              {line.substring(2)}
+            </Text>
+          </View>
+        );
+      }
+      // Handle bullet points
+      else if (line.startsWith('- ') || line.startsWith('* ')) {
+        elements.push(
+          <View key={key++} style={styles.listItem}>
+            <Text style={styles.bulletPoint}>•</Text>
+            <Text style={styles.listText}>
+              {parseInlineMarkdown(line.substring(2))}
+            </Text>
+          </View>
+        );
+      }
+      // Handle numbered lists
+      else if (/^\d+\.\s/.test(line)) {
+        const match = line.match(/^(\d+)\.\s(.*)$/);
+        if (match) {
+          elements.push(
+            <View key={key++} style={styles.listItem}>
+              <Text style={styles.bulletPoint}>{match[1]}.</Text>
+              <Text style={styles.listText}>
+                {parseInlineMarkdown(match[2])}
+              </Text>
+            </View>
+          );
+        }
+      }
+      // Handle regular paragraphs
+      else if (line.trim()) {
+        elements.push(
+          <Text key={key++} style={styles.paragraph}>
+            {parseInlineMarkdown(line)}
+          </Text>
+        );
+      }
+      // Handle empty lines
+      else {
+        elements.push(<View key={key++} style={styles.emptyLine} />);
+      }
+    }
+
+    return elements;
+  };
+
+  // Parse inline markdown with proper link handling (both markdown links and plain URLs)
+  const parseInlineMarkdown = (text: string): JSX.Element => {
+    // Check for both markdown links and plain URLs
+    const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    const urlRegex = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
+    
+    const hasMarkdownLinks = markdownLinkRegex.test(text);
+    const hasPlainUrls = urlRegex.test(text);
+    
+    if (!hasMarkdownLinks && !hasPlainUrls) {
+      // No links, parse other markdown normally
+      return parseTextWithFormatting(text);
+    }
+
+    // Find all links (both types)
+    const allLinks: Array<{
+      start: number;
+      end: number;
+      text: string;
+      url: string;
+      type: 'markdown' | 'plain';
+    }> = [];
+
+    // Reset regex
+    markdownLinkRegex.lastIndex = 0;
+    urlRegex.lastIndex = 0;
+
+    // Find markdown links
+    let match;
+    while ((match = markdownLinkRegex.exec(text)) !== null) {
+      allLinks.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        text: match[1],
+        url: match[2],
+        type: 'markdown'
+      });
+    }
+
+    // Find plain URLs
+    while ((match = urlRegex.exec(text)) !== null) {
+      const url = match[0];
+      // Check if this URL is already part of a markdown link
+      const isPartOfMarkdownLink = allLinks.some(link => 
+        link.type === 'markdown' && 
+        match.index >= link.start && 
+        match.index < link.end
+      );
+      
+      if (!isPartOfMarkdownLink) {
+        allLinks.push({
+          start: match.index,
+          end: match.index + match[0].length,
+          text: url,
+          url: url,
+          type: 'plain'
+        });
+      }
+    }
+
+    // Sort links by start position
+    allLinks.sort((a, b) => a.start - b.start);
+
+    // Parse text with links
+    const elements: JSX.Element[] = [];
+    let lastIndex = 0;
+    let key = 0;
+    
+    allLinks.forEach(link => {
+      // Add text before link
+      if (link.start > lastIndex) {
+        const beforeText = text.substring(lastIndex, link.start);
+        if (beforeText) {
+          elements.push(
+            <Text key={key++}>
+              {parseTextWithFormatting(beforeText)}
+            </Text>
+          );
+        }
+      }
+      
+      // Add clickable link
+      elements.push(
+        <Text
+          key={key++}
+          style={styles.link}
+          onPress={() => handleLinkPress(link.url)}
+        >
+          {link.text}
+        </Text>
+      );
+      
+      lastIndex = link.end;
+    });
+    
+    // Add remaining text
+    if (lastIndex < text.length) {
+      const remainingText = text.substring(lastIndex);
+      if (remainingText) {
+        elements.push(
+          <Text key={key++}>
+            {parseTextWithFormatting(remainingText)}
+          </Text>
+        );
+      }
+    }
+    
+    return <Text>{elements}</Text>;
+  };
+
+  // Parse text formatting (bold, italic, code) without links
+  const parseTextWithFormatting = (text: string): JSX.Element => {
+    const elements: JSX.Element[] = [];
+    let currentIndex = 0;
+    let key = 0;
+
+    // Regex patterns for inline markdown (excluding links)
+    const patterns = [
+      { regex: /\*\*(.*?)\*\*/g, style: styles.bold },           // **bold**
+      { regex: /\*(.*?)\*/g, style: styles.italic },             // *italic*
+      { regex: /`(.*?)`/g, style: styles.inlineCode },           // `code`
+    ];
+
+    // Find all matches
+    const allMatches: Array<{
+      match: RegExpExecArray;
+      pattern: typeof patterns[0];
+      index: number;
+    }> = [];
+
+    patterns.forEach(pattern => {
+      let match;
+      const regex = new RegExp(pattern.regex.source, pattern.regex.flags);
+      while ((match = regex.exec(text)) !== null) {
+        allMatches.push({
+          match,
+          pattern,
+          index: match.index
+        });
+      }
+    });
+
+    // Sort matches by index
+    allMatches.sort((a, b) => a.index - b.index);
+
+    // Process matches
+    allMatches.forEach(({ match, pattern }) => {
+      // Add text before this match
+      if (match.index > currentIndex) {
+        const beforeText = text.substring(currentIndex, match.index);
+        if (beforeText) {
+          elements.push(
+            <Text key={key++} style={styles.normalText}>
+              {beforeText}
+            </Text>
+          );
+        }
+      }
+
+      // Handle the match
+      elements.push(
+        <Text key={key++} style={[styles.normalText, pattern.style]}>
+          {match[1]}
+        </Text>
+      );
+
+      currentIndex = match.index + match[0].length;
+    });
+
+    // Add remaining text
+    if (currentIndex < text.length) {
+      const remainingText = text.substring(currentIndex);
+      if (remainingText) {
+        elements.push(
+          <Text key={key++} style={styles.normalText}>
+            {remainingText}
+          </Text>
+        );
+      }
+    }
+
+    // If no matches found, return the original text
+    if (elements.length === 0) {
+      return (
+        <Text style={styles.normalText}>
+          {text}
+        </Text>
+      );
+    }
+
+    return <Text>{elements}</Text>;
+  };
+
+  // Check if message contains markdown syntax or URLs
+  const hasMarkdown = /[*_`#\[\]!-]/.test(message) || 
+                     message.includes('```') || 
+                     message.includes('> ') ||
+                     /^\d+\.\s/.test(message) ||
+                     /https?:\/\//.test(message);
+
   return (
     <View style={[
       styles.container,
@@ -167,12 +333,18 @@ const MessageBubble = ({
         styles.bubble,
         isUser ? styles.userBubble : styles.botBubble
       ]}>
-        <Text style={[
-          styles.messageText,
-          isUser ? styles.userText : styles.botText
-        ]}>
-          {message}
-        </Text>
+        {!isUser && hasMarkdown ? (
+          <View style={styles.markdownContainer}>
+            {parseMarkdown(message)}
+          </View>
+        ) : (
+          <Text style={[
+            styles.messageText,
+            isUser ? styles.userText : styles.botText
+          ]}>
+            {message}
+          </Text>
+        )}
       </View>
       <Text style={[
         styles.timestamp,
@@ -231,147 +403,108 @@ const styles = StyleSheet.create({
     color: '#49654E',
     opacity: 0.7,
   },
-  // Job card styles
-  jobCardsContainer: {
-    marginTop: 8,
-    marginBottom: 16,
-    paddingHorizontal: 4,
-    alignSelf: 'stretch',
-    width: '100%',
+  // Markdown styles
+  markdownContainer: {
+    flexDirection: 'column',
   },
-  jobResultsTitle: {
+  normalText: {
     fontSize: 16,
-    fontWeight: '600',
+    lineHeight: 22,
     color: '#253528',
-    marginBottom: 12,
-    marginLeft: 4,
   },
-  jobCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+  paragraph: {
+    fontSize: 16,
+    lineHeight: 22,
+    color: '#253528',
+    marginBottom: 8,
   },
-  jobCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
+  h1: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#253528',
+    marginBottom: 8,
+    marginTop: 4,
   },
-  logoContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: '#F0F4F0',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-    overflow: 'hidden',
-  },
-  companyLogo: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-  },
-  placeholderLogo: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: '#49654E',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  placeholderText: {
-    color: 'white',
+  h2: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    color: '#253528',
+    marginBottom: 6,
+    marginTop: 4,
   },
-  jobTitleContainer: {
-    flex: 1,
-  },
-  jobTitle: {
+  h3: {
     fontSize: 16,
     fontWeight: '600',
     color: '#253528',
+    marginBottom: 4,
+    marginTop: 4,
   },
-  jobCompany: {
-    fontSize: 14,
-    color: '#49654E',
-    marginTop: 2,
+  bold: {
+    fontWeight: '700',
   },
-  jobCardDetails: {
-    marginBottom: 12,
+  italic: {
+    fontStyle: 'italic',
   },
-  jobCardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 6,
-  },
-  jobLocation: {
-    fontSize: 14,
-    color: '#666666',
-    marginLeft: 6,
-  },
-  jobSalary: {
-    fontSize: 14,
-    color: '#666666',
-    marginLeft: 6,
-  },
-  jobType: {
-    fontSize: 14,
-    color: '#666666',
-    marginLeft: 6,
-  },
-  jobExperience: {
-    fontSize: 14,
-    color: '#666666',
-    marginLeft: 6,
-  },
-  buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  jobViewButton: {
-    flex: 1,
+  inlineCode: {
     backgroundColor: '#F0F4F0',
-    borderRadius: 8,
-    paddingVertical: 8,
-    alignItems: 'center',
-    marginRight: 8,
-  },
-  jobViewText: {
-    color: '#49654E',
-    fontWeight: '600',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 4,
     fontSize: 14,
+    fontFamily: 'monospace',
   },
-  jobApplyButton: {
-    flex: 1,
-    backgroundColor: '#8BA889',
-    borderRadius: 8,
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
-  jobApplyText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  noJobsContainer: {
-    padding: 16,
+  codeBlock: {
     backgroundColor: '#F0F4F0',
-    borderRadius: 12,
-    alignItems: 'center',
-    alignSelf: 'stretch',
-    width: '100%',
+    padding: 12,
+    borderRadius: 8,
     marginVertical: 8,
   },
-  noJobsText: {
+  codeText: {
+    fontSize: 14,
+    fontFamily: 'monospace',
+    color: '#253528',
+    lineHeight: 18,
+  },
+  blockquote: {
+    backgroundColor: '#F0F4F0',
+    borderLeftWidth: 4,
+    borderLeftColor: '#8BA889',
+    paddingLeft: 12,
+    paddingVertical: 8,
+    marginVertical: 4,
+  },
+  blockquoteText: {
     fontSize: 16,
-    color: '#666666',
+    fontStyle: 'italic',
+    color: '#253528',
+    lineHeight: 22,
+  },
+  listItem: {
+    flexDirection: 'row',
+    marginBottom: 4,
+    alignItems: 'flex-start',
+  },
+  bulletPoint: {
+    fontSize: 16,
+    color: '#253528',
+    marginRight: 8,
+    lineHeight: 22,
+    fontWeight: '600',
+  },
+  listText: {
+    fontSize: 16,
+    color: '#253528',
+    lineHeight: 22,
+    flex: 1,
+  },
+  link: {
+    color: '#8BA889',
+    textDecorationLine: 'underline',
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  emptyLine: {
+    height: 8,
   },
 });
 

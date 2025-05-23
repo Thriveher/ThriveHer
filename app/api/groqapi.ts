@@ -37,6 +37,54 @@ const groqClient = new Groq({
   dangerouslyAllowBrowser: true
 });
 
+// Helper function to safely parse JSON with fallback
+const safeJsonParse = (jsonString: string) => {
+  try {
+    return JSON.parse(jsonString);
+  } catch (error) {
+    console.warn('Primary JSON parse failed, attempting to clean and retry:', error);
+    
+    try {
+      // Attempt to clean common JSON formatting issues
+      let cleanedJson = jsonString
+        .replace(/[\r\n\t]/g, ' ') // Replace newlines and tabs with spaces
+        .replace(/\\/g, '\\\\') // Escape backslashes
+        .replace(/"/g, '\\"') // Escape quotes
+        .replace(/\\\\"response\\\\":/g, '"response":') // Fix response key
+        .replace(/\\\\"context\\\\":/g, '"context":') // Fix context key  
+        .replace(/\\\\"chatName\\\\":/g, '"chatName":') // Fix chatName key
+        .replace(/\\\\"emoji\\\\":/g, '"emoji":') // Fix emoji key
+        .replace(/\\\\"([^"]+)\\\\":/g, '"$1":'); // Fix other keys
+      
+      return JSON.parse(cleanedJson);
+    } catch (secondError) {
+      console.warn('Secondary JSON parse also failed:', secondError);
+      
+      // Try to extract values using regex as last resort
+      try {
+        const responseMatch = jsonString.match(/"response":\s*"([^"]*(?:\\"[^"]*)*)"/) || 
+                             jsonString.match(/response['":\s]+([^,}]+)/);
+        const contextMatch = jsonString.match(/"context":\s*"([^"]*(?:\\"[^"]*)*)"/) ||
+                            jsonString.match(/context['":\s]+([^,}]+)/);
+        const chatNameMatch = jsonString.match(/"chatName":\s*"([^"]*(?:\\"[^"]*)*)"/) ||
+                             jsonString.match(/chatName['":\s]+([^,}]+)/);
+        const emojiMatch = jsonString.match(/"emoji":\s*"([^"]*)"/) ||
+                          jsonString.match(/emoji['":\s]+([^,}]+)/);
+        
+        return {
+          response: responseMatch ? responseMatch[1].replace(/\\"/g, '"') : null,
+          context: contextMatch ? contextMatch[1].replace(/\\"/g, '"') : null,
+          chatName: chatNameMatch ? chatNameMatch[1].replace(/\\"/g, '"') : null,
+          emoji: emojiMatch ? emojiMatch[1] : null
+        };
+      } catch (regexError) {
+        console.warn('Regex extraction also failed:', regexError);
+        return null;
+      }
+    }
+  }
+};
+
 export const processWithGroq = async (request: GroqRequest): Promise<GroqResponse> => {
   try {
     const { message, userId } = request;
@@ -117,76 +165,60 @@ export const processWithGroq = async (request: GroqRequest): Promise<GroqRespons
     }
     
     // Construct the system prompt that handles job detection, resume generation, and normal responses
-    const systemPrompt = `You are a supportive and empathetic female assistant for women. 
-Your responses should be warm, friendly, and conversational, creating a genuine connection with users.
-ALWAYS respond in the same language that the user's message is in.
+    const systemPrompt = `You are Asha, a supportive female assistant focused on jobs, careers, and mental health for women. Stay strictly on these topics and maintain professional boundaries.
 
-CRITICAL INSTRUCTIONS:
-Analyze the user's current message only carefully (not the context). Check for these specific intents:
+Core Behavior:
+- Respond warmly and conversationally in the same language as the user
+- IF you are creating JSON Output don't generate any extra text follow the template strictly
+- Stay focused on career guidance, job searching, resume building, and mental health support
+- Do not entertain inappropriate behavior or off-topic requests
 
-1. If the user is asking about RESUME GENERATION, CV creation, resume building, or wants to create/generate their resume, then respond ONLY with:
+Response Protocol:
+
+1. Resume/CV Requests
+If user asks about resume generation in current message, CV creation, or resume building, respond ONLY with:
 "GENERATEPDF"
 
-Examples of resume generation requests:
-- "Generate my resume"
-- "Create a CV for me"
-- "I need to build my resume"
-- "Can you make my resume?"
-- "Help me create a resume"
-
-2. If the user is specifically asking about jobs, careers, employment opportunities, or looking for work (they mention a specific job title/role they want), then respond ONLY in this exact format:
+2. Job Search Requests
+If user asks about specific jobs, employment opportunities, or mentions a job title they want in current message, respond ONLY with:
 "JOB_SEARCH: [job_title] [location]"
+Use "India" if no location specified.
 
-Where:
-- job_title is the specific role/position they mentioned
-- location is the city/area they mentioned (use "anywhere" if no location specified)
+3. All Other Messages
+Provide detailed JSON output only nothing else no extra text. 
+IF its a casual message give response in plain text. 
+For Informative message make it pointwise in very long detail and use markdown and give proper links.
+For both Informative and general chat follow this below structure strictly and no extra text:
 
-Examples of job search requests:
-- "I'm looking for software engineer jobs in Mumbai" → "JOB_SEARCH: software engineer Mumbai"
-- "Find me marketing jobs" → "JOB_SEARCH: marketing anywhere"
-- "Any data analyst positions in Bangalore?" → "JOB_SEARCH: data analyst Bangalore"
-- "I need a teacher job in Delhi" → "JOB_SEARCH: teacher Delhi"
+IMPORTANT: When creating JSON, ensure all string values are properly escaped:
+- Replace all newlines with \\n
+- Replace all quotes with \\"  
+- Replace all backslashes with \\\\
+- Keep markdown formatting but escape it properly
 
-3. If the user is NOT asking about resume generation OR job searching, provide a normal conversational response in this JSON format:
 {
-  "response": "Your helpful response here written in a natural, cheerful tone, Reply in the Same Language, Use Proper Grammatically Correct Language, use local slangs when needed (limit emojis to only where they genuinely enhance communication)",
-  "context": "Detailed conversation context that captures key information, emotions, topics discussed, and important details for future reference",
-  "chatName": "Suggested name for this conversation based on content",
-  "emoji": "A single aesthetic emoji that represents the main theme of this conversation"
+  "response": "Natural, supportive response in user's language with minimal emojis or For informative query reply in markdown very long in very detail and pointwise ",
+  "context": "Comprehensive conversation context for future reference", 
+  "chatName": "Suggested conversation title",
+  "emoji": "Single relevant aesthetic emoji"
 }
 
-Current chat name: "${updatedChatName}"
-Current emoji: "${updatedEmoji}"
-
-CONTEXT INSTRUCTIONS:
-- The context should be comprehensive yet concise
-- Include key topics, user preferences, important details, and emotional states
-- Structure the context to help you better understand the user in future interactions
-- Update the context by building on previous context, not replacing it entirely
-
-EMOJI INSTRUCTIONS:
-- Choose ONE aesthetic emoji that best represents the conversation theme
-- The emoji should be visually appealing and relevant to the discussion
-- Avoid generic emojis unless truly appropriate
-
-RESPONSE STYLE FOR NON-JOB/NON-RESUME SEARCHES:
-- Write in a fun-loving, cheerful tone that feels natural and human
-- Keep responses conversational and genuinely engaging
-- Use expressive language rather than relying on emojis to convey emotion
-- Be warm and supportive while maintaining a natural flow
-- Always respond in the SAME LANGUAGE as the user's message
-
-Previous context: ${updatedContext || "No previous context available."}`;
+Response Guidelines:
+- Use proper grammar and local expressions when appropriate
+- Be genuinely engaging and emotionally supportive
+- Keep responses focused on career development and mental wellness
+- Redirect off-topic conversations back to core subjects
+- Maintain professional boundaries while being warm and approachable`;
 
     // Make single Groq request
     const response = await groqClient.chat.completions.create({
-      model: "meta-llama/llama-4-maverick-17b-128e-instruct",
+      model: "llama-3.3-70b-versatile",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: message }
       ],
-      temperature: 0.8,
-      max_tokens: 4000
+      temperature: 0.7,
+      max_tokens: 5000
     });
 
     const groqResponse = response.choices[0]?.message?.content || '';
@@ -248,16 +280,17 @@ Previous context: ${updatedContext || "No previous context available."}`;
         botResponse = "I couldn't understand your job search request. Please specify the job title you're looking for.";
       }
     } else {
-      // Handle normal conversation - parse JSON response
-      try {
-        const parsedResponse = JSON.parse(groqResponse);
-        botResponse = parsedResponse.response || "I'm here to help! How can I assist you today?";
+      // Handle normal conversation - parse JSON response with safe parsing
+      const parsedResponse = safeJsonParse(groqResponse);
+      
+      if (parsedResponse && parsedResponse.response) {
+        botResponse = parsedResponse.response;
         updatedContext = parsedResponse.context || updatedContext;
         updatedChatName = parsedResponse.chatName || updatedChatName;
         updatedEmoji = parsedResponse.emoji || updatedEmoji;
-      } catch (error) {
-        console.error("Failed to parse GROQ response as JSON:", error);
-        // Fallback if JSON parsing fails
+      } else {
+        console.warn("Failed to parse GROQ response, using fallback");
+        // Fallback if JSON parsing completely fails
         botResponse = groqResponse || "I'm here to help! How can I assist you today?";
       }
     }
