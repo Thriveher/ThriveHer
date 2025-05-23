@@ -2,7 +2,8 @@ import Constants from 'expo-constants';
 import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 import Groq from 'groq-sdk';
-import { searchJobsFormatted } from '../api/getjobsforchat'; // Import from the second file
+import { searchJobsFormatted } from '../api/getjobsforchat';
+import { generateResume } from '../api/createresume';
 
 interface GroqRequest {
   message: string;
@@ -115,34 +116,43 @@ export const processWithGroq = async (request: GroqRequest): Promise<GroqRespons
       updatedContext = context || '';
     }
     
-    // Construct the enhanced system prompt for job detection and response
+    // Construct the system prompt that handles job detection, resume generation, and normal responses
     const systemPrompt = `You are a supportive and empathetic female assistant for women. 
 Your responses should be warm, friendly, and conversational, creating a genuine connection with users.
 ALWAYS respond in the same language that the user's message is in.
 
-CRITICAL JOB SEARCH DETECTION:
-You must detect if the user is asking about jobs, careers, employment opportunities, or work-related searches.
+CRITICAL INSTRUCTIONS:
+Analyze the user's current message only carefully (not the context). Check for these specific intents:
 
-If the user IS asking about jobs/careers:
-1. Extract the job title/role they're looking for
-2. Extract the location (city, state, country) they mentioned
-3. If no location is specified, use "anywhere"
-4. Return ONLY this format: "JOB_SEARCH|job_title|location"
+1. If the user is asking about RESUME GENERATION, CV creation, resume building, or wants to create/generate their resume, then respond ONLY with:
+"GENERATEPDF"
 
-Examples:
-- User: "I'm looking for software engineer jobs in Mumbai" → Return: "JOB_SEARCH|software engineer|Mumbai"
-- User: "Find me marketing jobs" → Return: "JOB_SEARCH|marketing|anywhere"
-- User: "Any data analyst positions in Bangalore?" → Return: "JOB_SEARCH|data analyst|Bangalore"
+Examples of resume generation requests:
+- "Generate my resume"
+- "Create a CV for me"
+- "I need to build my resume"
+- "Can you make my resume?"
+- "Help me create a resume"
 
-If the user is NOT asking about jobs:
-Return a normal conversational response in valid JSON format:
+2. If the user is specifically asking about jobs, careers, employment opportunities, or looking for work (they mention a specific job title/role they want), then respond ONLY in this exact format:
+"JOB_SEARCH: [job_title] [location]"
 
+Where:
+- job_title is the specific role/position they mentioned
+- location is the city/area they mentioned (use "anywhere" if no location specified)
+
+Examples of job search requests:
+- "I'm looking for software engineer jobs in Mumbai" → "JOB_SEARCH: software engineer Mumbai"
+- "Find me marketing jobs" → "JOB_SEARCH: marketing anywhere"
+- "Any data analyst positions in Bangalore?" → "JOB_SEARCH: data analyst Bangalore"
+- "I need a teacher job in Delhi" → "JOB_SEARCH: teacher Delhi"
+
+3. If the user is NOT asking about resume generation OR job searching, provide a normal conversational response in this JSON format:
 {
   "response": "Your helpful response here written in a natural, cheerful tone, Reply in the Same Language, Use Proper Grammatically Correct Language, use local slangs when needed (limit emojis to only where they genuinely enhance communication)",
   "context": "Detailed conversation context that captures key information, emotions, topics discussed, and important details for future reference",
   "chatName": "Suggested name for this conversation based on content",
-  "emoji": "A single aesthetic emoji that represents the main theme of this conversation",
-  "timestamp": "${timestamp}"
+  "emoji": "A single aesthetic emoji that represents the main theme of this conversation"
 }
 
 Current chat name: "${updatedChatName}"
@@ -159,13 +169,12 @@ EMOJI INSTRUCTIONS:
 - The emoji should be visually appealing and relevant to the discussion
 - Avoid generic emojis unless truly appropriate
 
-RESPONSE STYLE:
+RESPONSE STYLE FOR NON-JOB/NON-RESUME SEARCHES:
 - Write in a fun-loving, cheerful tone that feels natural and human
 - Keep responses conversational and genuinely engaging
 - Use expressive language rather than relying on emojis to convey emotion
 - Be warm and supportive while maintaining a natural flow
 - Always respond in the SAME LANGUAGE as the user's message
-- If the user writes in Hindi, respond in Hindi; if they write in Spanish, respond in Spanish, etc.
 
 Previous context: ${updatedContext || "No previous context available."}`;
 
@@ -182,25 +191,54 @@ Previous context: ${updatedContext || "No previous context available."}`;
 
     const groqResponse = response.choices[0]?.message?.content || '';
 
+    // Check if this is a resume generation request
+    if (groqResponse.trim() === 'GENERATEPDF') {
+      try {
+        // Call the resume generation API
+        const resumeResult = await generateResume();
+        
+        // Return the result as is from the resume generator
+        botResponse = resumeResult;
+        
+        // Use resume-related emoji and chat name for new chats
+        if (!chatId) {
+          updatedEmoji = emoji || '📄';
+          updatedChatName = chatName || 'Resume Generation';
+          updatedContext = 'User requested resume generation. Generated resume successfully.';
+        } else {
+          // Update context for existing chats
+          updatedContext = `${updatedContext}\n\nUser requested resume generation. Generated resume successfully.`;
+        }
+      } catch (error) {
+        console.error('Resume generation error:', error);
+        botResponse = "I encountered an error while generating your resume. Please try again.";
+      }
+    }
     // Check if this is a job search request
-    if (groqResponse.startsWith('JOB_SEARCH|')) {
-      const parts = groqResponse.split('|');
-      if (parts.length >= 3) {
-        const jobTitle = parts[1].trim();
-        const location = parts[2].trim() === 'anywhere' ? undefined : parts[2].trim();
+    else if (groqResponse.startsWith('JOB_SEARCH:')) {
+      const jobSearchPart = groqResponse.replace('JOB_SEARCH:', '').trim();
+      const parts = jobSearchPart.split(' ');
+      
+      if (parts.length >= 2) {
+        // Extract job title (all parts except the last one) and location (last part)
+        const location = parts[parts.length - 1];
+        const jobTitle = parts.slice(0, -1).join(' ');
         
         try {
           // Call the job search API which will return formatted response
-          botResponse = await searchJobsFormatted(jobTitle, location);
+          botResponse = await searchJobsFormatted(
+            jobTitle, 
+            location === 'anywhere' ? undefined : location
+          );
           
           // Use job-related emoji and chat name for new chats
           if (!chatId) {
             updatedEmoji = emoji || '💼';
-            updatedChatName = chatName || `Job Search: ${jobTitle}${location ? ` in ${location}` : ''}`;
-            updatedContext = `User is searching for ${jobTitle} jobs${location ? ` in ${location}` : ''}. Providing job search results.`;
+            updatedChatName = chatName || `Job Search: ${jobTitle}${location !== 'anywhere' ? ` in ${location}` : ''}`;
+            updatedContext = `User is searching for ${jobTitle} jobs${location !== 'anywhere' ? ` in ${location}` : ''}. Providing job search results.`;
           } else {
             // Update context for existing chats
-            updatedContext = `${updatedContext}\n\nUser searched for ${jobTitle} jobs${location ? ` in ${location}` : ''}. Provided job search results.`;
+            updatedContext = `${updatedContext}\n\nUser searched for ${jobTitle} jobs${location !== 'anywhere' ? ` in ${location}` : ''}. Provided job search results.`;
           }
         } catch (error) {
           console.error('Job search error:', error);
