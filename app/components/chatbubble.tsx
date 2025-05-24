@@ -107,7 +107,7 @@ const MessageBubble = ({
           );
         }
       }
-      // Handle regular paragraphs
+      // Handle regular paragraphs (including empty lines as line breaks)
       else if (line.trim()) {
         elements.push(
           <Text key={key++} style={styles.paragraph}>
@@ -115,9 +115,9 @@ const MessageBubble = ({
           </Text>
         );
       }
-      // Handle empty lines
+      // Handle empty lines as line breaks
       else {
-        elements.push(<View key={key++} style={styles.emptyLine} />);
+        elements.push(<View key={key++} style={styles.lineBreak} />);
       }
     }
 
@@ -234,8 +234,28 @@ const MessageBubble = ({
     return <Text>{elements}</Text>;
   };
 
-  // Parse text formatting (bold, italic, code) without links
+  // Parse text formatting (bold, italic, code) without links, handling newlines
   const parseTextWithFormatting = (text: string): JSX.Element => {
+    // First, split by newlines and handle each line separately
+    const lines = text.split('\n');
+    if (lines.length > 1) {
+      return (
+        <Text>
+          {lines.map((line, index) => (
+            <Text key={index}>
+              {parseLineFormatting(line)}
+              {index < lines.length - 1 && '\n'}
+            </Text>
+          ))}
+        </Text>
+      );
+    }
+    
+    return parseLineFormatting(text);
+  };
+
+  // Parse formatting for a single line
+  const parseLineFormatting = (text: string): JSX.Element => {
     const elements: JSX.Element[] = [];
     let currentIndex = 0;
     let key = 0;
@@ -322,7 +342,8 @@ const MessageBubble = ({
                      message.includes('```') || 
                      message.includes('> ') ||
                      /^\d+\.\s/.test(message) ||
-                     /https?:\/\//.test(message);
+                     /https?:\/\//.test(message) ||
+                     message.includes('\n'); // Also treat newlines as markdown
 
   return (
     <View style={[
@@ -342,7 +363,12 @@ const MessageBubble = ({
             styles.messageText,
             isUser ? styles.userText : styles.botText
           ]}>
-            {message}
+            {message.split('\n').map((line, index, array) => (
+              <Text key={index}>
+                {line}
+                {index < array.length - 1 && '\n'}
+              </Text>
+            ))}
           </Text>
         )}
       </View>
@@ -416,7 +442,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
     color: '#253528',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   h1: {
     fontSize: 20,
@@ -503,7 +529,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
   },
-  emptyLine: {
+  lineBreak: {
     height: 8,
   },
 });

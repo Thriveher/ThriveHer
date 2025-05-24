@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import Groq from 'groq-sdk';
 import { searchJobsFormatted } from '../api/getjobsforchat';
 import { generateResume } from '../api/createresume';
+import { findRedditCommunities } from './api/getcommunities';
 
 interface GroqRequest {
   message: string;
@@ -85,6 +86,28 @@ const safeJsonParse = (jsonString: string) => {
   }
 };
 
+// Helper function to format Reddit communities for display
+const formatRedditCommunities = (communities: any) => {
+  if (!communities || !communities.communities || communities.communities.length === 0) {
+    return "I couldn't find any relevant communities for your search. Please try with different keywords.";
+  }
+
+  let response = `Found ${communities.communities.length} relevant Reddit communities:\n\n`;
+  
+  communities.communities.forEach((community: any) => {
+    response += `**${community.displayName}**\n`;
+    response += `• Members: ${community.subscribers.toLocaleString()}\n`;
+    response += `• Link: ${community.fullUrl}\n`;
+    if (community.description) {
+      response += `• Description: ${community.description.substring(0, 100)}${community.description.length > 100 ? '...' : ''}\n`;
+    }
+    response += '\n';
+  });
+
+  response += "\nClick on any link to join the community and start engaging with like-minded people!";
+  return response;
+};
+
 export const processWithGroq = async (request: GroqRequest): Promise<GroqResponse> => {
   try {
     const { message, userId } = request;
@@ -148,8 +171,8 @@ export const processWithGroq = async (request: GroqRequest): Promise<GroqRespons
             
           // Append recent exchanges to existing context or create new context
           updatedContext = updatedContext 
-            ? `${updatedContext}\n\nRecent conversation:\n${recentExchanges}` 
-            : `Conversation history:\n${recentExchanges}`;
+            ? `${updatedContext}\n \n Recent conversation:\n ${recentExchanges}` 
+            : `Conversation history:\n ${recentExchanges}`;
         }
       }
     } else {
@@ -164,13 +187,13 @@ export const processWithGroq = async (request: GroqRequest): Promise<GroqRespons
       updatedContext = context || '';
     }
     
-    // Construct the system prompt that handles job detection, resume generation, and normal responses
-    const systemPrompt = `You are Asha, a supportive female assistant focused on jobs, careers, and mental health for women. Stay strictly on these topics and maintain professional boundaries.
+    // Construct the enhanced system prompt with community detection
+    const systemPrompt = `You are Asha, a supportive female assistant focused on jobs, careers, mental health for women, and community building. Stay strictly on these topics and maintain professional boundaries.
 
 Core Behavior:
 - Respond warmly and conversationally in the same language as the user
 - IF you are creating JSON Output don't generate any extra text follow the template strictly
-- Stay focused on career guidance, job searching, resume building, and mental health support
+- Stay focused on career guidance, job searching, resume building, mental health support, and community connections
 - Do not entertain inappropriate behavior or off-topic requests
 
 Response Protocol:
@@ -184,14 +207,19 @@ If user asks about specific jobs, employment opportunities, or mentions a job ti
 "JOB_SEARCH: [job_title] [location]"
 Use "India" if no location specified.
 
-3. All Other Messages
+3. Community/Group/Forum Requests
+If user asks about finding communities, groups, forums, support networks, or mentions wanting to connect with like-minded people on specific topics, respond ONLY with:
+"COMMUNITY: [search_terms]"
+Example: If user says "I want to find communities about web development" respond with "COMMUNITY: web development"
+
+4. All Other Messages
 Provide detailed JSON output only nothing else no extra text. 
 IF its a casual message give response in plain text. 
 For Informative message make it pointwise in very long detail and use markdown and give proper links.
 For both Informative and general chat follow this below structure strictly and no extra text:
 
 IMPORTANT: When creating JSON, ensure all string values are properly escaped:
-- Replace all newlines with \\n
+- Replace all newlines with '\\n '
 - Replace all quotes with \\"  
 - Replace all backslashes with \\\\
 - Keep markdown formatting but escape it properly
@@ -206,7 +234,7 @@ IMPORTANT: When creating JSON, ensure all string values are properly escaped:
 Response Guidelines:
 - Use proper grammar and local expressions when appropriate
 - Be genuinely engaging and emotionally supportive
-- Keep responses focused on career development and mental wellness
+- Keep responses focused on career development, mental wellness, and community building
 - Redirect off-topic conversations back to core subjects
 - Maintain professional boundaries while being warm and approachable`;
 
@@ -279,7 +307,33 @@ Response Guidelines:
       } else {
         botResponse = "I couldn't understand your job search request. Please specify the job title you're looking for.";
       }
-    } else {
+    }
+    // Check if this is a community search request
+    else if (groqResponse.startsWith('COMMUNITY:')) {
+      const communitySearchTerms = groqResponse.replace('COMMUNITY:', '').trim();
+      
+      try {
+        // Call the Reddit communities API
+        const communities = await findRedditCommunities(communitySearchTerms, 10);
+        
+        // Format the communities response
+        botResponse = formatRedditCommunities(communities);
+        
+        // Use community-related emoji and chat name for new chats
+        if (!chatId) {
+          updatedEmoji = emoji || '👥';
+          updatedChatName = chatName || `Communities: ${communitySearchTerms}`;
+          updatedContext = `User searched for communities related to "${communitySearchTerms}". Provided Reddit community recommendations.`;
+        } else {
+          // Update context for existing chats
+          updatedContext = `${updatedContext}\n\nUser searched for communities related to "${communitySearchTerms}". Provided Reddit community recommendations.`;
+        }
+      } catch (error) {
+        console.error('Community search error:', error);
+        botResponse = "I encountered an error while searching for communities. Please try again with different search terms.";
+      }
+    } 
+    else {
       // Handle normal conversation - parse JSON response with safe parsing
       const parsedResponse = safeJsonParse(groqResponse);
       
