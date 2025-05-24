@@ -36,11 +36,17 @@ const MessageBubble = ({
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       
-      // Handle headers
-      if (line.startsWith('# ')) {
+      // Handle headers (including #### for h4)
+      if (line.startsWith('#### ')) {
         elements.push(
-          <Text key={key++} style={styles.h1}>
-            {line.substring(2)}
+          <Text key={key++} style={styles.h4}>
+            {line.substring(5)}
+          </Text>
+        );
+      } else if (line.startsWith('### ')) {
+        elements.push(
+          <Text key={key++} style={styles.h3}>
+            {line.substring(4)}
           </Text>
         );
       } else if (line.startsWith('## ')) {
@@ -49,10 +55,10 @@ const MessageBubble = ({
             {line.substring(3)}
           </Text>
         );
-      } else if (line.startsWith('### ')) {
+      } else if (line.startsWith('# ')) {
         elements.push(
-          <Text key={key++} style={styles.h3}>
-            {line.substring(4)}
+          <Text key={key++} style={styles.h1}>
+            {line.substring(2)}
           </Text>
         );
       }
@@ -82,8 +88,8 @@ const MessageBubble = ({
           </View>
         );
       }
-      // Handle bullet points
-      else if (line.startsWith('- ') || line.startsWith('* ')) {
+      // Handle bullet points (-, *, and + for unordered lists)
+      else if (line.startsWith('- ') || line.startsWith('* ') || line.startsWith('+ ')) {
         elements.push(
           <View key={key++} style={styles.listItem}>
             <Text style={styles.bulletPoint}>•</Text>
@@ -115,7 +121,7 @@ const MessageBubble = ({
           </Text>
         );
       }
-      // Handle empty lines as line breaks
+      // Handle empty lines as line breaks (enhanced \n handling)
       else {
         elements.push(<View key={key++} style={styles.lineBreak} />);
       }
@@ -234,17 +240,17 @@ const MessageBubble = ({
     return <Text>{elements}</Text>;
   };
 
-  // Parse text formatting (bold, italic, code) without links, handling newlines
+  // Parse text formatting (bold, italic, code, and { } blocks) without links, handling newlines
   const parseTextWithFormatting = (text: string): JSX.Element => {
-    // First, split by newlines and handle each line separately
-    const lines = text.split('\n');
-    if (lines.length > 1) {
+    // Enhanced newline handling - treat ALL newlines as line breaks, including connected words
+    if (text.includes('\n')) {
+      const parts = text.split('\n');
       return (
         <Text>
-          {lines.map((line, index) => (
+          {parts.map((part, index) => (
             <Text key={index}>
-              {parseLineFormatting(line)}
-              {index < lines.length - 1 && '\n'}
+              {part ? parseLineFormatting(part) : ''}
+              {index < parts.length - 1 && '\n'}
             </Text>
           ))}
         </Text>
@@ -260,11 +266,12 @@ const MessageBubble = ({
     let currentIndex = 0;
     let key = 0;
 
-    // Regex patterns for inline markdown (excluding links)
+    // Regex patterns for inline markdown (including { } for special formatting)
     const patterns = [
-      { regex: /\*\*(.*?)\*\*/g, style: styles.bold },           // **bold**
-      { regex: /\*(.*?)\*/g, style: styles.italic },             // *italic*
-      { regex: /`(.*?)`/g, style: styles.inlineCode },           // `code`
+      { regex: /\*\*((?:[^*]|\*(?!\*))+?)\*\*/g, style: styles.bold },   // **bold** (improved)
+      { regex: /\*([^*]+?)\*/g, style: styles.italic },                  // *italic* (improved)
+      { regex: /`([^`]+?)`/g, style: styles.inlineCode },                // `code` (improved)
+      { regex: /\{([^}]+?)\}/g, style: styles.specialBlock },            // {special formatting} (improved)
     ];
 
     // Find all matches
@@ -286,11 +293,22 @@ const MessageBubble = ({
       }
     });
 
-    // Sort matches by index
+    // Sort matches by index and handle overlapping matches
     allMatches.sort((a, b) => a.index - b.index);
 
+    // Remove overlapping matches (keep the first one)
+    const filteredMatches = [];
+    let lastEnd = 0;
+    
+    for (const matchObj of allMatches) {
+      if (matchObj.match.index >= lastEnd) {
+        filteredMatches.push(matchObj);
+        lastEnd = matchObj.match.index + matchObj.match[0].length;
+      }
+    }
+
     // Process matches
-    allMatches.forEach(({ match, pattern }) => {
+    filteredMatches.forEach(({ match, pattern }) => {
       // Add text before this match
       if (match.index > currentIndex) {
         const beforeText = text.substring(currentIndex, match.index);
@@ -337,13 +355,19 @@ const MessageBubble = ({
     return <Text>{elements}</Text>;
   };
 
-  // Check if message contains markdown syntax or URLs
-  const hasMarkdown = /[*_`#\[\]!-]/.test(message) || 
+  // Enhanced markdown detection including new elements
+  const hasMarkdown = /[*_`#\[\]!+{}-]/.test(message) || 
                      message.includes('```') || 
                      message.includes('> ') ||
+                     message.includes('#### ') ||
                      /^\d+\.\s/.test(message) ||
+                     /^[+*-]\s/.test(message) ||
                      /https?:\/\//.test(message) ||
-                     message.includes('\n'); // Also treat newlines as markdown
+                     message.includes('\n') ||
+                     /\{.*?\}/.test(message) ||
+                     /\*\*.*?\*\*/.test(message) ||
+                     /\n\S/.test(message) || // Detect newline followed by any non-whitespace
+                     message.split('\n').length > 1; // Any multiline text should be treated as markdown
 
   return (
     <View style={[
@@ -411,6 +435,7 @@ const styles = StyleSheet.create({
   messageText: {
     fontSize: 16,
     lineHeight: 22,
+    textAlign: 'justify',
   },
   userText: {
     color: '#FFFFFF',
@@ -437,12 +462,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
     color: '#253528',
+    textAlign: 'justify',
   },
   paragraph: {
     fontSize: 16,
     lineHeight: 22,
     color: '#253528',
     marginBottom: 4,
+    textAlign: 'justify',
   },
   h1: {
     fontSize: 20,
@@ -450,6 +477,7 @@ const styles = StyleSheet.create({
     color: '#253528',
     marginBottom: 8,
     marginTop: 4,
+    textAlign: 'justify',
   },
   h2: {
     fontSize: 18,
@@ -457,6 +485,7 @@ const styles = StyleSheet.create({
     color: '#253528',
     marginBottom: 6,
     marginTop: 4,
+    textAlign: 'justify',
   },
   h3: {
     fontSize: 16,
@@ -464,6 +493,15 @@ const styles = StyleSheet.create({
     color: '#253528',
     marginBottom: 4,
     marginTop: 4,
+    textAlign: 'justify',
+  },
+  h4: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#253528',
+    marginBottom: 4,
+    marginTop: 4,
+    textAlign: 'justify',
   },
   bold: {
     fontWeight: '700',
@@ -478,6 +516,16 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     fontSize: 14,
     fontFamily: 'monospace',
+  },
+  specialBlock: {
+    backgroundColor: '#E8F5E8',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    fontSize: 15,
+    borderWidth: 1,
+    borderColor: '#8BA889',
+    fontWeight: '500',
   },
   codeBlock: {
     backgroundColor: '#F0F4F0',
@@ -504,6 +552,7 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     color: '#253528',
     lineHeight: 22,
+    textAlign: 'justify',
   },
   listItem: {
     flexDirection: 'row',
@@ -522,6 +571,7 @@ const styles = StyleSheet.create({
     color: '#253528',
     lineHeight: 22,
     flex: 1,
+    textAlign: 'justify',
   },
   link: {
     color: '#8BA889',

@@ -26,6 +26,7 @@ import * as Google from 'expo-auth-session/providers/google';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import JobDetailCard from '../components/JobCard'; // Add this line
 import ResumeCard from '../components/ResumeCard'; 
+import CommunityCard from '../components/CommunityCard';
 
 // Hardcoded Supabase credentials
 const SUPABASE_URL = 'https://ibwjjwzomoyhkxugmmmw.supabase.co';
@@ -56,10 +57,7 @@ interface GroqRequestParams {
   context: string;
   userId: string;
 }
-
-const COMMANDS: CommandSuggestion[] = [
-  { command: '/job', description: 'Search for jobs' },
-];
+ 
 
 const ChatScreen = () => {
   const { id: chatId } = useLocalSearchParams<{ id: string }>();
@@ -72,9 +70,6 @@ const ChatScreen = () => {
   const [inputText, setInputText] = useState<string>('');
   const [context, setContext] = useState<string>('');
   const [showCommands, setShowCommands] = useState<boolean>(false);
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
-  const [jobDetailsModalVisible, setJobDetailsModalVisible] = useState<boolean>(false);
-  const [selectedJobDetails, setSelectedJobDetails] = useState<any>(null);
   const [userId, setUserId] = useState<string>(FALLBACK_USER_ID);
   
   const flatListRef = useRef<FlatList>(null);
@@ -125,15 +120,7 @@ const ChatScreen = () => {
       // Pass only the chatId to fetchChatMessages (fix for error #1)
       const { messages: chatMessages, context: chatContext } = await fetchChatMessages(chatId);
       
-      // Process messages to flag job search commands
-      const processedMessages = chatMessages.map(msg => {
-        if (msg.is_user_message && msg.content.toLowerCase().startsWith('/job ')) {
-          return { ...msg, isJobSearch: true };
-        }
-        return msg;
-      });
-      
-      setMessages(processedMessages);
+      setMessages(chatMessages);
       setContext(chatContext || '');
     } catch (error) {
       console.error('Failed to load chat messages:', error);
@@ -153,9 +140,6 @@ const ChatScreen = () => {
     setInputText('');
     setShowCommands(false);
     
-    // Check if this is a job search command
-    const isJobSearch = userMessage.toLowerCase().startsWith('/job ') || userMessage.toLowerCase() === '/job';
-    
     // Optimistically add user message to the UI
     const tempUserMessageId = `temp-${Date.now()}`;
     const newUserMessage: Message = {
@@ -163,7 +147,6 @@ const ChatScreen = () => {
       content: userMessage,
       is_user_message: true,
       timestamp: new Date().toISOString(),
-      isJobSearch: isJobSearch
     };
     
     setMessages(prevMessages => [...prevMessages, newUserMessage]);
@@ -193,48 +176,12 @@ const ChatScreen = () => {
         updatedContext
       );
       
-      // Check if this is a job search response and parse job data
-      let jobData: any[] | undefined = undefined;
-      if (isJobSearch) {
-        try {
-          // Extract job data from the response if it's a job search
-          const jobMatches = botResponse.match(/\d+\.\s(.*?)\sat\s(.*?)\n\s*Location:\s(.*?)\n\s*Salary:\s(.*?)\n/g);
-          
-          if (jobMatches && jobMatches.length > 0) {
-            jobData = jobMatches.map(match => {
-              const titleMatch = match.match(/\d+\.\s(.*?)\sat\s(.*?)\n/);
-              const locationMatch = match.match(/Location:\s(.*?)\n/);
-              const salaryMatch = match.match(/Salary:\s(.*?)\n/);
-              const linkMatch = match.match(/Apply:\s(.*?)(\n|$)/);
-              
-              // Convert $ to ₹ in salary string
-              const rawSalary = salaryMatch ? salaryMatch[1] : 'Not specified';
-              const salary = rawSalary.replace(/\$/g, '₹');
-              
-              return {
-                title: titleMatch ? titleMatch[1] : 'Unknown position',
-                company: titleMatch ? titleMatch[2] : 'Unknown company',
-                location: locationMatch ? locationMatch[1] : 'Unknown location',
-                salary: salary,
-                applyLink: linkMatch ? linkMatch[1].trim() : '#', // Ensure the link is trimmed
-                id: `job-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-                logoUrl: `https://logo.clearbit.com/${titleMatch ? titleMatch[2].toLowerCase().replace(/\s+/g, '') : 'company'}.com`, // Generate logo URL
-              };
-            });
-          }
-        } catch (parseError) {
-          console.error("Error parsing job data:", parseError);
-        }
-      }
-      
       // Update messages with the actual response
       const botMessage: Message = {
         id: `bot-${Date.now()}`,
         content: botResponse,
         is_user_message: false,
         timestamp: new Date().toISOString(),
-        jobData: jobData,
-        isJobSearch: isJobSearch
       };
       
       setMessages(prevMessages => [
@@ -286,145 +233,6 @@ const ChatScreen = () => {
     }
   };
 
-  const handleJobCardPress = (jobId: string) => {
-    setSelectedJobId(jobId);
-    // Find the job details from all job data
-    const allJobs = messages
-      .filter(msg => msg.jobData)
-      .flatMap(msg => msg.jobData || []);
-    
-    const jobDetails = allJobs.find(job => job.id === jobId);
-    if (jobDetails) {
-      setSelectedJobDetails(jobDetails);
-      setJobDetailsModalVisible(true);
-    }
-  };
-
-  const openJobApplication = (url: string) => {
-    if (!url || url === '#') {
-      Alert.alert('Info', 'Application link is not available');
-      return;
-    }
-    
-    // Check if the URL starts with http or https
-    const formattedUrl = url.startsWith('http') ? url : `https://${url}`;
-    
-    // Use Linking API to open the URL
-    Linking.canOpenURL(formattedUrl)
-      .then(supported => {
-        if (supported) {
-          return Linking.openURL(formattedUrl);
-        } else {
-          Alert.alert('Error', `Cannot open URL: ${formattedUrl}`);
-        }
-      })
-      .catch(err => {
-        console.error('Error opening URL:', err);
-        Alert.alert('Error', 'Could not open the application link');
-      });
-  };
-
-  const renderCompanyLogo = (logoUrl: string) => {
-    return (
-      <View style={styles.logoContainer}>
-        <Image
-          source={{ uri: logoUrl }}
-          style={styles.companyLogo}
-          defaultSource={require('../../assets/images/placeholder-logo.jpeg')} // Add a placeholder image to your assets
-          onError={(e) => console.log('Error loading logo', e.nativeEvent.error)}
-        />
-      </View>
-    );
-  };
-
-  const renderJobCard = (job: any) => (
-    <TouchableOpacity 
-      style={styles.jobCard}
-      onPress={() => handleJobCardPress(job.id)}
-      key={job.id}
-    >
-      <View style={styles.jobCardHeader}>
-        {renderCompanyLogo(job.logoUrl)}
-        <View style={styles.jobTitleContainer}>
-          <Text style={styles.jobTitle} numberOfLines={1}>{job.title}</Text>
-          <Text style={styles.jobCompany} numberOfLines={1}>{job.company}</Text>
-        </View>
-      </View>
-      <View style={styles.jobCardDetails}>
-        <View style={styles.jobCardRow}>
-          <Feather name="map-pin" size={14} color="#49654E" />
-          <Text style={styles.jobLocation} numberOfLines={1}>{job.location}</Text>
-        </View>
-        <View style={styles.jobCardRow}>
-          <Feather name="dollar-sign" size={14} color="#49654E" />
-          <Text style={styles.jobSalary} numberOfLines={1}>{job.salary}</Text>
-        </View>
-      </View>
-      {/* Updated Apply Button - Make it more prominent and handle press directly */}
-      <TouchableOpacity 
-        style={styles.jobApplyButton}
-        onPress={() => openJobApplication(job.applyLink)}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.jobApplyText}>Apply Now</Text>
-      </TouchableOpacity>
-    </TouchableOpacity>
-  );
-
-  const renderJobCards = (jobData: any[]) => (
-    <View style={styles.jobCardsContainer}>
-      <Text style={styles.jobResultsTitle}>Job Search Results</Text>
-      {jobData.map(job => renderJobCard(job))}
-    </View>
-  );
-
-  // Resume Card Component
-  const ResumeCard = ({ message }: { message: string }) => {
-    // Check if message contains /resume command
-    const resumeMatch = message.match(/\/resume\s*:\s*(https?:\/\/[^\s]+)/i);
-    
-    if (!resumeMatch) return null;
-    
-    const resumeUrl = resumeMatch[1];
-    
-    const openResume = () => {
-      Linking.canOpenURL(resumeUrl)
-        .then(supported => {
-          if (supported) {
-            return Linking.openURL(resumeUrl);
-          } else {
-            Alert.alert('Error', 'Cannot open resume URL');
-          }
-        })
-        .catch(err => {
-          console.error('Error opening resume:', err);
-          Alert.alert('Error', 'Could not open the resume');
-        });
-    };
-
-    return (
-      <View style={styles.resumeCard}>
-        <View style={styles.resumeCardHeader}>
-          <View style={styles.resumeIconContainer}>
-            <Feather name="file-text" size={24} color="#49654E" />
-          </View>
-          <View style={styles.resumeTextContainer}>
-            <Text style={styles.resumeTitle}>Resume Document</Text>
-            <Text style={styles.resumeSubtitle}>Click to view or download</Text>
-          </View>
-        </View>
-        <TouchableOpacity 
-          style={styles.resumeViewButton}
-          onPress={openResume}
-          activeOpacity={0.7}
-        >
-          <Feather name="external-link" size={16} color="#FFFFFF" />
-          <Text style={styles.resumeViewText}>View Resume</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  };
-
   const renderMessage = ({ item }: { item: Message }) => {
     // Check if the message contains /jobdata command
     if (!item.is_user_message && item.content.toLowerCase().includes('/jobdata')) {
@@ -432,20 +240,13 @@ const ChatScreen = () => {
     }
     
     // Check if the message contains /resume command
-    if (item.content.toLowerCase().includes('/resume')) {
+    if (!item.is_user_message && item.content.toLowerCase().includes('/resume')) {
       return <ResumeCard message={item.content} />;
     }
     
-    // For job search messages, only show user message bubble without assistant response
-    if (item.isJobSearch && !item.is_user_message) {
-      // This is a bot response to a job search command, so render only job cards
-      return item.jobData && item.jobData.length > 0 ? (
-        renderJobCards(item.jobData)
-      ) : (
-        <View style={styles.noJobsContainer}>
-          <Text style={styles.noJobsText}>No job results found</Text>
-        </View>
-      );
+    // Check if the message contains /community command
+    if (!item.is_user_message && item.content.toLowerCase().includes('/community')) {
+      return <CommunityCard message={item.content} />;
     }
     
     // For all other messages, render normal message bubbles
@@ -550,72 +351,6 @@ const ChatScreen = () => {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
-
-      {/* Job Details Modal - Updated to improve Apply button */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={jobDetailsModalVisible}
-        onRequestClose={() => setJobDetailsModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              {selectedJobDetails?.logoUrl && (
-                <Image 
-                  source={{ uri: selectedJobDetails.logoUrl }} 
-                  style={styles.modalLogo}
-                  defaultSource={require('../../assets/images/placeholder-logo.jpeg')}
-                />
-              )}
-              <View style={styles.modalTitleContainer}>
-                <Text style={styles.modalTitle} numberOfLines={2}>
-                  {selectedJobDetails?.title}
-                </Text>
-                <Text style={styles.modalCompany}>
-                  {selectedJobDetails?.company}
-                </Text>
-              </View>
-              <TouchableOpacity 
-                onPress={() => setJobDetailsModalVisible(false)}
-                style={styles.modalClose}
-              >
-                <MaterialIcons name="close" size={24} color="#253528" />
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.modalBody}>
-              <View style={styles.detailRow}>
-                <Feather name="map-pin" size={16} color="#49654E" />
-                <Text style={styles.detailText}>{selectedJobDetails?.location}</Text>
-              </View>
-              
-              <View style={styles.detailRow}>
-                <Feather name="dollar-sign" size={16} color="#49654E" />
-                <Text style={styles.detailText}>{selectedJobDetails?.salary}</Text>
-              </View>
-              
-              {/* Enhanced Apply Now button with better feedback */}
-              <TouchableOpacity 
-                style={styles.applyButtonLarge}
-                onPress={() => {
-                  // Close the modal then open the application link
-                  setJobDetailsModalVisible(false);
-                  setTimeout(() => {
-                    if (selectedJobDetails?.applyLink) {
-                      openJobApplication(selectedJobDetails.applyLink);
-                    }
-                  }, 300); // Short delay to allow modal close animation
-                }}
-                activeOpacity={0.6}
-              >
-                <Feather name="external-link" size={18} color="#FFFFFF" style={styles.applyButtonIcon} />
-                <Text style={styles.applyButtonText}>Apply Now</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 };
