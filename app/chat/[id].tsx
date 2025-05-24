@@ -15,6 +15,8 @@ import {
   Pressable,
   Linking,
   Image,
+  Animated,
+  Vibration,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons, Feather } from '@expo/vector-icons';
@@ -24,13 +26,14 @@ import { processWithGroq } from '../api/groqapi';
 import { StatusBar } from 'expo-status-bar';
 import * as Google from 'expo-auth-session/providers/google';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import JobDetailCard from '../components/JobCard'; // Add this line
-import ResumeCard from '../components/ResumeCard'; 
+import JobDetailCard from '../components/JobCard';
+import ResumeCard from '../components/ResumeCard';
+import VoiceService, { VoiceServiceError, TranscriptionResult, ChatResponse } from '@/app/api/voiceService';
 
 // Hardcoded Supabase credentials
 const SUPABASE_URL = 'https://ibwjjwzomoyhkxugmmmw.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlid2pqd3pvbW95aGt4dWdtbW13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ4NzkwODgsImV4cCI6MjA2MDQ1NTA4OH0.RmnNBQh_1KJo0TgCjs72aBoxWoOsd_vWjNeIHRfVXac';
-const FALLBACK_USER_ID = 'demo-user-123'; // Fallback user ID for the demo
+const FALLBACK_USER_ID = 'demo-user-123';
 
 // Types
 export interface Message {
@@ -38,17 +41,16 @@ export interface Message {
   content: string;
   is_user_message: boolean;
   timestamp: string;
-  isJobSearch?: boolean; // Flag to identify job search messages
-  jobData?: any[]; // Note: this can't be null, only undefined or an array
+  isJobSearch?: boolean;
+  jobData?: any[];
+  isVoiceMessage?: boolean;
 }
 
-// Command suggestions interface
 interface CommandSuggestion {
   command: string;
   description: string;
 }
 
-// Define the correct interface for Groq request
 interface GroqRequestParams {
   message: string;
   chatId: string;
@@ -77,14 +79,33 @@ const ChatScreen = () => {
   const [selectedJobDetails, setSelectedJobDetails] = useState<any>(null);
   const [userId, setUserId] = useState<string>(FALLBACK_USER_ID);
   
+  // Voice recording states
+  const [isRecording, setIsRecording] = useState<boolean>(false);
+  const [isTranscribingAndProcessing, setIsTranscribingAndProcessing] = useState<boolean>(false);
+  const [recordingDuration, setRecordingDuration] = useState<number>(0);
+  const [showVoiceModal, setShowVoiceModal] = useState<boolean>(false);
+  const [voiceProcessingStep, setVoiceProcessingStep] = useState<string>('');
+  
+  // Animation values
+  const recordingAnimation = useRef(new Animated.Value(1)).current;
+  const pulseAnimation = useRef(new Animated.Value(1)).current;
+  
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
+  const recordingTimer = useRef<NodeJS.Timeout | null>(null);
 
-   // Get Google user ID from session
+  // Initialize voice service configuration
+  useEffect(() => {
+    VoiceService.updateConfig({
+      language: 'en',
+      cleanupAfterTranscription: true,
+    });
+  }, []);
+
+  // Get Google user ID from session
   useEffect(() => {
     const getUserInfo = async () => {
       try {
-        // Try to get Google user ID from AsyncStorage
         const googleUserInfo = await AsyncStorage.getItem('googleUserInfo');
         if (googleUserInfo) {
           const userInfo = JSON.parse(googleUserInfo);
@@ -94,7 +115,6 @@ const ChatScreen = () => {
         }
       } catch (error) {
         console.log('Error retrieving Google user info:', error);
-        // Fall back to demo user ID
       }
     };
     
@@ -111,7 +131,6 @@ const ChatScreen = () => {
   }, [chatId]);
 
   useEffect(() => {
-    // Show command suggestions when user types '/'
     if (inputText === '/') {
       setShowCommands(true);
     } else if (inputText.length > 0 && !inputText.startsWith('/')) {
@@ -119,13 +138,53 @@ const ChatScreen = () => {
     }
   }, [inputText]);
 
+  // Recording animation effect
+  useEffect(() => {
+    if (isRecording) {
+      const startPulseAnimation = () => {
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(pulseAnimation, {
+              toValue: 1.3,
+              duration: 800,
+              useNativeDriver: true,
+            }),
+            Animated.timing(pulseAnimation, {
+              toValue: 1,
+              duration: 800,
+              useNativeDriver: true,
+            }),
+          ])
+        ).start();
+      };
+
+      startPulseAnimation();
+
+      recordingTimer.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+    } else {
+      pulseAnimation.stopAnimation();
+      pulseAnimation.setValue(1);
+      if (recordingTimer.current) {
+        clearInterval(recordingTimer.current);
+        recordingTimer.current = null;
+      }
+      setRecordingDuration(0);
+    }
+
+    return () => {
+      if (recordingTimer.current) {
+        clearInterval(recordingTimer.current);
+      }
+    };
+  }, [isRecording]);
+
   const loadChatMessages = async () => {
     try {
       setLoading(true);
-      // Pass only the chatId to fetchChatMessages (fix for error #1)
       const { messages: chatMessages, context: chatContext } = await fetchChatMessages(chatId);
       
-      // Process messages to flag job search commands
       const processedMessages = chatMessages.map(msg => {
         if (msg.is_user_message && msg.content.toLowerCase().startsWith('/job ')) {
           return { ...msg, isJobSearch: true };
@@ -137,67 +196,52 @@ const ChatScreen = () => {
       setContext(chatContext || '');
     } catch (error) {
       console.error('Failed to load chat messages:', error);
-      Alert.alert(
-        'Error',
-        'Failed to load messages. Please try again later.'
-      );
+      Alert.alert('Error', 'Failed to load messages. Please try again later.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSendMessage = async () => {
-    if (!inputText.trim() || !chatId) return;
+  const handleSendMessage = async (messageText?: string, isVoice: boolean = false) => {
+    const textToSend = messageText || inputText.trim();
+    if (!textToSend || !chatId) return;
     
-    const userMessage = inputText.trim();
     setInputText('');
     setShowCommands(false);
     
-    // Check if this is a job search command
-    const isJobSearch = userMessage.toLowerCase().startsWith('/job ') || userMessage.toLowerCase() === '/job';
+    const isJobSearch = textToSend.toLowerCase().startsWith('/job ') || textToSend.toLowerCase() === '/job';
     
-    // Optimistically add user message to the UI
     const tempUserMessageId = `temp-${Date.now()}`;
     const newUserMessage: Message = {
       id: tempUserMessageId,
-      content: userMessage,
+      content: textToSend,
       is_user_message: true,
       timestamp: new Date().toISOString(),
-      isJobSearch: isJobSearch
+      isJobSearch: isJobSearch,
+      isVoiceMessage: isVoice,
     };
     
     setMessages(prevMessages => [...prevMessages, newUserMessage]);
     scrollToBottom();
     
-    // Show typing indicator
     setSending(true);
     
     try {
-      // Process with Groq API using correct parameters (fix for error #2)
       const groqResponse = await processWithGroq({
-        message: userMessage,
+        message: textToSend,
         chatId,
         chatName: decodeURIComponent(chatName),
         context,
-        userId // Using the Google user ID if available
+        userId
       });
       
-      // Add bot response to messages
       const { botResponse, updatedContext } = groqResponse;
       
-      // Save both messages to the database with correct parameters (fix for error #3)
-      await sendMessage(
-        chatId, 
-        userMessage, 
-        botResponse, 
-        updatedContext
-      );
+      await sendMessage(chatId, textToSend, botResponse, updatedContext);
       
-      // Check if this is a job search response and parse job data
       let jobData: any[] | undefined = undefined;
       if (isJobSearch) {
         try {
-          // Extract job data from the response if it's a job search
           const jobMatches = botResponse.match(/\d+\.\s(.*?)\sat\s(.*?)\n\s*Location:\s(.*?)\n\s*Salary:\s(.*?)\n/g);
           
           if (jobMatches && jobMatches.length > 0) {
@@ -207,7 +251,6 @@ const ChatScreen = () => {
               const salaryMatch = match.match(/Salary:\s(.*?)\n/);
               const linkMatch = match.match(/Apply:\s(.*?)(\n|$)/);
               
-              // Convert $ to ₹ in salary string
               const rawSalary = salaryMatch ? salaryMatch[1] : 'Not specified';
               const salary = rawSalary.replace(/\$/g, '₹');
               
@@ -216,9 +259,9 @@ const ChatScreen = () => {
                 company: titleMatch ? titleMatch[2] : 'Unknown company',
                 location: locationMatch ? locationMatch[1] : 'Unknown location',
                 salary: salary,
-                applyLink: linkMatch ? linkMatch[1].trim() : '#', // Ensure the link is trimmed
+                applyLink: linkMatch ? linkMatch[1].trim() : '#',
                 id: `job-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-                logoUrl: `https://logo.clearbit.com/${titleMatch ? titleMatch[2].toLowerCase().replace(/\s+/g, '') : 'company'}.com`, // Generate logo URL
+                logoUrl: `https://logo.clearbit.com/${titleMatch ? titleMatch[2].toLowerCase().replace(/\s+/g, '') : 'company'}.com`,
               };
             });
           }
@@ -227,7 +270,6 @@ const ChatScreen = () => {
         }
       }
       
-      // Update messages with the actual response
       const botMessage: Message = {
         id: `bot-${Date.now()}`,
         content: botResponse,
@@ -243,15 +285,10 @@ const ChatScreen = () => {
         botMessage
       ]);
       
-      // Update context
       setContext(updatedContext);
     } catch (error) {
       console.error('Error sending message:', error);
-      Alert.alert(
-        'Error',
-        'Failed to send message. Please try again.'
-      );
-      // Remove the temporary user message if there was an error
+      Alert.alert('Error', 'Failed to send message. Please try again.');
       setMessages(prevMessages => 
         prevMessages.filter(msg => msg.id !== tempUserMessageId)
       );
@@ -261,10 +298,198 @@ const ChatScreen = () => {
     }
   };
 
-  // Handle key press for Enter key to send message
-  const handleKeyPress = (e) => {
+  // Enhanced voice recording with automatic Groq processing
+  const startVoiceRecording = async () => {
+    try {
+      setShowVoiceModal(true);
+      setIsRecording(true);
+      setVoiceProcessingStep('Recording...');
+      
+      // Haptic feedback
+      if (Platform.OS === 'ios') {
+        Vibration.vibrate([0, 50]);
+      } else {
+        Vibration.vibrate(50);
+      }
+      
+      const result = await VoiceService.startRecording();
+      console.log('Recording started:', result);
+    } catch (error: any) {
+      console.error('Recording start error:', error);
+      setIsRecording(false);
+      setShowVoiceModal(false);
+      
+      const voiceError = error as VoiceServiceError;
+      const errorMessage = VoiceService.getErrorMessage(voiceError);
+      Alert.alert('Recording Error', errorMessage);
+    }
+  };
+
+  const stopVoiceRecordingAndProcess = async () => {
+    try {
+      setIsRecording(false);
+      setIsTranscribingAndProcessing(true);
+      setVoiceProcessingStep('Transcribing audio...');
+      
+      // Stop recording and get the audio file
+      const recordingResult = await VoiceService.stopRecording();
+      console.log('Recording stopped:', recordingResult);
+      
+      // Transcribe the audio
+      const transcriptionResult = await VoiceService.transcribeAudio(recordingResult.uri);
+      console.log('Transcription result:', transcriptionResult);
+      
+      if (!transcriptionResult.text.trim()) {
+        setIsTranscribingAndProcessing(false);
+        setShowVoiceModal(false);
+        Alert.alert('No Speech Detected', 'Please try recording again and speak clearly.');
+        return;
+      }
+
+      // Update processing step
+      setVoiceProcessingStep('Processing with AI...');
+      
+      // Create temporary user message to show immediately
+      const tempUserMessageId = `temp-voice-${Date.now()}`;
+      const transcribedText = transcriptionResult.text.trim();
+      const isJobSearch = transcribedText.toLowerCase().includes('job') || 
+                         transcribedText.toLowerCase().includes('career') ||
+                         transcribedText.toLowerCase().startsWith('/job');
+      
+      const newUserMessage: Message = {
+        id: tempUserMessageId,
+        content: transcribedText,
+        is_user_message: true,
+        timestamp: new Date().toISOString(),
+        isJobSearch: isJobSearch,
+        isVoiceMessage: true,
+      };
+      
+      // Close modal and show transcribed message
+      setIsTranscribingAndProcessing(false);
+      setShowVoiceModal(false);
+      
+      // Add user message immediately
+      setMessages(prevMessages => [...prevMessages, newUserMessage]);
+      scrollToBottom();
+      
+      // Process with Groq
+      setSending(true);
+      
+      try {
+        const groqResponse = await processWithGroq({
+          message: transcribedText,
+          chatId,
+          chatName: decodeURIComponent(chatName),
+          context,
+          userId
+        });
+        
+        const { botResponse, updatedContext } = groqResponse;
+        
+        // Save to database
+        await sendMessage(chatId, transcribedText, botResponse, updatedContext);
+        
+        // Parse job data if needed
+        let jobData: any[] | undefined = undefined;
+        if (isJobSearch) {
+          try {
+            const jobMatches = botResponse.match(/\d+\.\s(.*?)\sat\s(.*?)\n\s*Location:\s(.*?)\n\s*Salary:\s(.*?)\n/g);
+            
+            if (jobMatches && jobMatches.length > 0) {
+              jobData = jobMatches.map(match => {
+                const titleMatch = match.match(/\d+\.\s(.*?)\sat\s(.*?)\n/);
+                const locationMatch = match.match(/Location:\s(.*?)\n/);
+                const salaryMatch = match.match(/Salary:\s(.*?)\n/);
+                const linkMatch = match.match(/Apply:\s(.*?)(\n|$)/);
+                
+                const rawSalary = salaryMatch ? salaryMatch[1] : 'Not specified';
+                const salary = rawSalary.replace(/\$/g, '₹');
+                
+                return {
+                  title: titleMatch ? titleMatch[1] : 'Unknown position',
+                  company: titleMatch ? titleMatch[2] : 'Unknown company',
+                  location: locationMatch ? locationMatch[1] : 'Unknown location',
+                  salary: salary,
+                  applyLink: linkMatch ? linkMatch[1].trim() : '#',
+                  id: `job-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+                  logoUrl: `https://logo.clearbit.com/${titleMatch ? titleMatch[2].toLowerCase().replace(/\s+/g, '') : 'company'}.com`,
+                };
+              });
+            }
+          } catch (parseError) {
+            console.error("Error parsing job data:", parseError);
+          }
+        }
+        
+        // Create bot response message
+        const botMessage: Message = {
+          id: `bot-voice-${Date.now()}`,
+          content: botResponse,
+          is_user_message: false,
+          timestamp: new Date().toISOString(),
+          jobData: jobData,
+          isJobSearch: isJobSearch
+        };
+        
+        // Update messages with both user and bot messages
+        setMessages(prevMessages => [
+          ...prevMessages.filter(msg => msg.id !== tempUserMessageId),
+          newUserMessage,
+          botMessage
+        ]);
+        
+        setContext(updatedContext);
+        
+      } catch (groqError) {
+        console.error('Error processing with Groq:', groqError);
+        Alert.alert('Processing Error', 'Failed to process your voice message. Please try again.');
+        
+        // Remove the temporary user message on error
+        setMessages(prevMessages => 
+          prevMessages.filter(msg => msg.id !== tempUserMessageId)
+        );
+      } finally {
+        setSending(false);
+        scrollToBottom();
+      }
+      
+    } catch (error: any) {
+      console.error('Voice processing error:', error);
+      setIsRecording(false);
+      setIsTranscribingAndProcessing(false);
+      setShowVoiceModal(false);
+      
+      const voiceError = error as VoiceServiceError;
+      const errorMessage = VoiceService.getErrorMessage(voiceError);
+      Alert.alert('Voice Processing Error', errorMessage);
+    }
+  };
+
+  const cancelVoiceRecording = async () => {
+    try {
+      await VoiceService.cancelRecording();
+    } catch (error) {
+      console.warn('Error canceling recording:', error);
+    } finally {
+      setIsRecording(false);
+      setIsTranscribingAndProcessing(false);
+      setShowVoiceModal(false);
+      setVoiceProcessingStep('');
+    }
+  };
+
+  const handleVoiceButtonPress = () => {
+    if (isRecording) {
+      stopVoiceRecordingAndProcess();
+    } else {
+      startVoiceRecording();
+    }
+  };
+
+  const handleKeyPress = (e: any) => {
     if (e.nativeEvent.key === 'Enter' && !e.nativeEvent.shiftKey) {
-      e.preventDefault(); // Prevent default to avoid new line
+      e.preventDefault();
       if (inputText.trim() && !sending) {
         handleSendMessage();
       }
@@ -274,7 +499,6 @@ const ChatScreen = () => {
   const handleCommandSelect = (command: string) => {
     setInputText(command + ' ');
     setShowCommands(false);
-    // Focus the input after selecting a command
     inputRef.current?.focus();
   };
 
@@ -288,7 +512,6 @@ const ChatScreen = () => {
 
   const handleJobCardPress = (jobId: string) => {
     setSelectedJobId(jobId);
-    // Find the job details from all job data
     const allJobs = messages
       .filter(msg => msg.jobData)
       .flatMap(msg => msg.jobData || []);
@@ -306,10 +529,8 @@ const ChatScreen = () => {
       return;
     }
     
-    // Check if the URL starts with http or https
     const formattedUrl = url.startsWith('http') ? url : `https://${url}`;
     
-    // Use Linking API to open the URL
     Linking.canOpenURL(formattedUrl)
       .then(supported => {
         if (supported) {
@@ -324,13 +545,19 @@ const ChatScreen = () => {
       });
   };
 
+  const formatRecordingTime = (seconds: number): string => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
+
   const renderCompanyLogo = (logoUrl: string) => {
     return (
-      <View style={styles.logoContainer}>
+      <View style={styles.container}>
         <Image
           source={{ uri: logoUrl }}
           style={styles.companyLogo}
-          defaultSource={require('../../assets/images/placeholder-logo.jpeg')} // Add a placeholder image to your assets
+          defaultSource={require('../../assets/images/placeholder-logo.jpeg')}
           onError={(e) => console.log('Error loading logo', e.nativeEvent.error)}
         />
       </View>
@@ -345,22 +572,21 @@ const ChatScreen = () => {
     >
       <View style={styles.jobCardHeader}>
         {renderCompanyLogo(job.logoUrl)}
-        <View style={styles.jobTitleContainer}>
+        <View style={styles.modalTitleContainer}>
           <Text style={styles.jobTitle} numberOfLines={1}>{job.title}</Text>
           <Text style={styles.jobCompany} numberOfLines={1}>{job.company}</Text>
         </View>
       </View>
       <View style={styles.jobCardDetails}>
-        <View style={styles.jobCardRow}>
+        <View style={styles.jobCard}>
           <Feather name="map-pin" size={14} color="#49654E" />
           <Text style={styles.jobLocation} numberOfLines={1}>{job.location}</Text>
         </View>
-        <View style={styles.jobCardRow}>
+        <View style={styles.jobCard}>
           <Feather name="dollar-sign" size={14} color="#49654E" />
           <Text style={styles.jobSalary} numberOfLines={1}>{job.salary}</Text>
         </View>
       </View>
-      {/* Updated Apply Button - Make it more prominent and handle press directly */}
       <TouchableOpacity 
         style={styles.jobApplyButton}
         onPress={() => openJobApplication(job.applyLink)}
@@ -372,15 +598,13 @@ const ChatScreen = () => {
   );
 
   const renderJobCards = (jobData: any[]) => (
-    <View style={styles.jobCardsContainer}>
+    <View style={styles.noJobsContainer}>
       <Text style={styles.jobResultsTitle}>Job Search Results</Text>
       {jobData.map(job => renderJobCard(job))}
     </View>
   );
 
-  // Resume Card Component
-  const ResumeCard = ({ message }: { message: string }) => {
-    // Check if message contains /resume command
+  const ResumeCardComponent = ({ message }: { message: string }) => {
     const resumeMatch = message.match(/\/resume\s*:\s*(https?:\/\/[^\s]+)/i);
     
     if (!resumeMatch) return null;
@@ -409,12 +633,12 @@ const ChatScreen = () => {
             <Feather name="file-text" size={24} color="#49654E" />
           </View>
           <View style={styles.resumeTextContainer}>
-            <Text style={styles.resumeTitle}>Resume Document</Text>
+            <Text style={styles.resumeSubtitle}>Resume Document</Text>
             <Text style={styles.resumeSubtitle}>Click to view or download</Text>
           </View>
         </View>
         <TouchableOpacity 
-          style={styles.resumeViewButton}
+          style={styles.resumeViewText}
           onPress={openResume}
           activeOpacity={0.7}
         >
@@ -426,19 +650,15 @@ const ChatScreen = () => {
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
-    // Check if the message contains /jobdata command
     if (!item.is_user_message && item.content.toLowerCase().includes('/jobdata')) {
       return <JobDetailCard message={item.content} />;
     }
     
-    // Check if the message contains /resume command
     if (item.content.toLowerCase().includes('/resume')) {
-      return <ResumeCard message={item.content} />;
+      return <ResumeCardComponent message={item.content} />;
     }
     
-    // For job search messages, only show user message bubble without assistant response
     if (item.isJobSearch && !item.is_user_message) {
-      // This is a bot response to a job search command, so render only job cards
       return item.jobData && item.jobData.length > 0 ? (
         renderJobCards(item.jobData)
       ) : (
@@ -448,7 +668,6 @@ const ChatScreen = () => {
       );
     }
     
-    // For all other messages, render normal message bubbles
     return (
       <View>
         <MessageBubble 
@@ -462,7 +681,7 @@ const ChatScreen = () => {
 
   const renderCommandSuggestion = ({ item }: { item: CommandSuggestion }) => (
     <TouchableOpacity 
-      style={styles.commandItem} 
+      style={styles.commandText} 
       onPress={() => handleCommandSelect(item.command)}
     >
       <Text style={styles.commandText}>{item.command}</Text>
@@ -471,7 +690,6 @@ const ChatScreen = () => {
   );
 
   const handleBackPress = () => {
-    // Changed to navigate to /chat instead of using router.back()
     router.push('/chat');
   };
 
@@ -533,14 +751,38 @@ const ChatScreen = () => {
             multiline
             maxLength={2000}
           />
+          
+          {/* Voice recording button */}
+          <TouchableOpacity 
+            style={[
+              styles.voiceButton,
+              isRecording && styles.voiceButtonRecording
+            ]}
+            onPress={handleVoiceButtonPress}
+            activeOpacity={0.7}
+            disabled={isTranscribingAndProcessing || sending}
+          >
+            <Animated.View style={{ transform: [{ scale: isRecording ? pulseAnimation : 1 }] }}>
+              {isTranscribingAndProcessing ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <MaterialIcons 
+                  name={isRecording ? "stop" : "mic"} 
+                  size={20} 
+                  color="#FFFFFF" 
+                />
+              )}
+            </Animated.View>
+          </TouchableOpacity>
+          
           <TouchableOpacity 
             style={[
               styles.sendButton,
               (!inputText.trim() || sending) && styles.sendButtonDisabled
             ]}
-            onPress={handleSendMessage}
+            onPress={() => handleSendMessage()}
             disabled={!inputText.trim() || sending}
-            activeOpacity={0.7} // Add feedback when pressed
+            activeOpacity={0.7}
           >
             {sending ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
@@ -551,7 +793,80 @@ const ChatScreen = () => {
         </View>
       </KeyboardAvoidingView>
 
-      {/* Job Details Modal - Updated to improve Apply button */}
+      {/* Enhanced Voice Recording Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={showVoiceModal}
+        onRequestClose={cancelVoiceRecording}
+      >
+        <View style={styles.voiceModalOverlay}>
+          <View style={styles.voiceModalContent}>
+            {isTranscribingAndProcessing ? (
+              <>
+                <View style={styles.processingHint}>
+                  <ActivityIndicator size="large" color="#49654E" />
+                </View>
+                <Text style={styles.voiceModalTitle}>Processing Voice...</Text>
+                <Text style={styles.voiceModalSubtitle}>{voiceProcessingStep}</Text>
+                <Text style={styles.processingHint}>
+                  Converting speech to text and getting AI response
+                </Text>
+              </>
+            ) : (
+              <>
+                <Animated.View 
+                  style={[
+                    styles.recordingIndicator,
+                    { transform: [{ scale: pulseAnimation }] }
+                  ]}
+                >
+                  <MaterialIcons name="mic" size={40} color="#FFFFFF" />
+                </Animated.View>
+                
+                <Text style={styles.voiceModalTitle}>
+                  {isRecording ? 'Recording...' : 'Ready to Record'}
+                </Text>
+                
+                {isRecording && (
+                  <Text style={styles.recordingTimer}>
+                    {formatRecordingTime(recordingDuration)}
+                  </Text>
+                )}
+                
+               <Text style={styles.voiceModalSubtitle}>
+  {isRecording ? 'Tap stop to send to AI' : 'Tap to start recording'}
+</Text>
+                
+                <View style={styles.voiceModalButtons}>
+                  <TouchableOpacity 
+                    style={styles.cancelButton}
+                    onPress={cancelVoiceRecording}
+                  >
+                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={[
+                      styles.recordButton,
+                      isRecording && styles.stopButton
+                    ]}
+                    onPress={handleVoiceButtonPress}
+                  >
+                    <MaterialIcons 
+                      name={isRecording ? "stop" : "mic"} 
+                      size={24} 
+                      color="#FFFFFF" 
+                    />
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Job Details Modal */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -595,17 +910,15 @@ const ChatScreen = () => {
                 <Text style={styles.detailText}>{selectedJobDetails?.salary}</Text>
               </View>
               
-              {/* Enhanced Apply Now button with better feedback */}
               <TouchableOpacity 
                 style={styles.applyButtonLarge}
                 onPress={() => {
-                  // Close the modal then open the application link
                   setJobDetailsModalVisible(false);
                   setTimeout(() => {
                     if (selectedJobDetails?.applyLink) {
                       openJobApplication(selectedJobDetails.applyLink);
                     }
-                  }, 300); // Short delay to allow modal close animation
+                  }, 300);
                 }}
                 activeOpacity={0.6}
               >
@@ -625,9 +938,79 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
+  jobResultsTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#253528',
+    marginBottom: 12,
+    textAlign: 'left',
+  },
+  jobApplyText: {
+    fontSize: 16,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  jobCardDetails: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 8,
+    gap: 12,
+  },
   container: {
     flex: 1,
     backgroundColor: '#F8FAF8',
+  },
+  noJobsContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 16,
+  },
+  noJobsText: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginVertical: 12,
+  },
+  jobCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#E0E7E0',
+  },
+  jobCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  jobTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#253528',
+    marginBottom: 2,
+  },
+  jobCompany: {
+    fontSize: 14,
+    color: '#49654E',
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  companyLogo: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    marginRight: 10,
+    backgroundColor: '#E0E7E0',
+    resizeMode: 'contain',
   },
   header: {
     flexDirection: 'row',
@@ -663,162 +1046,154 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#F8FAF8',
   },
   messageList: {
-    padding: 16,
-    paddingBottom: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    flexGrow: 1,
   },
-  inputContainer: {
-    flexDirection: 'row',
-    padding: 12,
+  commandsContainer: {
     backgroundColor: '#FFFFFF',
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: 'rgba(0, 0, 0, 0.1)',
+    maxHeight: 120,
+  },
+  commandsList: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  commandDescription: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginLeft: 8,
+  },
+  commandText: {
+    fontSize: 16,
+    color: '#253528',
+    fontWeight: '500',
+    marginRight: 8,
+  },
+  inputContainer: {
+    flexDirection: 'row',
     alignItems: 'flex-end',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(0, 0, 0, 0.1)',
   },
   input: {
     flex: 1,
-    backgroundColor: '#F0F4F0',
+    minHeight: 40,
+    maxHeight: 100,
+    borderWidth: 1,
+    borderColor: '#E0E7E0',
     borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    maxHeight: 120,
-    color: '#253528',
+    paddingVertical: 12,
     fontSize: 16,
+    color: '#253528',
+    backgroundColor: '#FFFFFF',
+    marginRight: 8,
+    textAlignVertical: 'top',
   },
-  sendButton: {
-    backgroundColor: '#8BA889',
+  voiceButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
+    backgroundColor: '#49654E',
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 8,
-  },
-  sendButtonDisabled: {
-    backgroundColor: '#8BA88980',
-  },
-  commandsContainer: {
-    position: 'absolute',
-    bottom: 70, // Position above the input box
-    left: 12,
-    right: 12,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    maxHeight: 200,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    zIndex: 10,
-  },
-  commandsList: {
-    borderRadius: 12,
-    padding: 4,
-  },
-  commandItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F4F0',
-  },
-  commandText: {
-    fontWeight: '600',
-    color: '#49654E',
-    fontSize: 16,
     marginRight: 8,
   },
-  commandDescription: {
-    color: '#666666',
-    fontSize: 14,
-    flex: 1,
+  voiceButtonRecording: {
+    backgroundColor: '#DC2626',
   },
-  jobCardsContainer: {
-    marginTop: 8,
-    marginBottom: 16,
-    paddingHorizontal: 4,
-  },
-  jobResultsTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#253528',
-    marginBottom: 12,
-    marginLeft: 4,
-  },
-  jobCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  jobCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  logoContainer: {
+  sendButton: {
     width: 40,
     height: 40,
-    borderRadius: 8,
-    backgroundColor: '#F0F4F0',
+    borderRadius: 20,
+    backgroundColor: '#49654E',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
-    overflow: 'hidden',
   },
-  companyLogo: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
+  sendButtonDisabled: {
+    backgroundColor: '#A8B8A8',
   },
-  jobTitleContainer: {
+  voiceModalOverlay: {
     flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  jobTitle: {
-    fontSize: 16,
+  voiceModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 30,
+    alignItems: 'center',
+    minWidth: 280,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  recordingIndicator: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#49654E',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  voiceModalTitle: {
+    fontSize: 18,
     fontWeight: '600',
     color: '#253528',
+    marginBottom: 8,
+    textAlign: 'center',
   },
-  jobCompany: {
+  voiceModalSubtitle: {
     fontSize: 14,
     color: '#49654E',
-    marginTop: 2,
+    textAlign: 'center',
+    marginBottom: 20,
   },
-  jobCardDetails: {
-    marginBottom: 12,
+  recordingTimer: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#DC2626',
+    marginBottom: 8,
+    textAlign: 'center',
   },
-  jobCardRow: {
+  voiceModalButtons: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 6,
+    gap: 20,
   },
-  jobLocation: {
-    fontSize: 14,
-    color: '#666666',
-    marginLeft: 6,
+  cancelButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
   },
-  jobSalary: {
-    fontSize: 14,
-    color: '#666666',
-    marginLeft: 6,
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#6B7280',
   },
-  jobApplyButton: {
-    backgroundColor: '#8BA889',
-    borderRadius: 8,
-    paddingVertical: 8,
+  recordButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#49654E',
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  jobApplyText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 14,
+  stopButton: {
+    backgroundColor: '#DC2626',
   },
   modalOverlay: {
     flex: 1,
@@ -835,113 +1210,138 @@ const styles = StyleSheet.create({
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 16,
+    marginBottom: 20,
   },
   modalLogo: {
-    width: 48,
-    height: 48,
+    width: 50,
+    height: 50,
     borderRadius: 8,
     marginRight: 12,
   },
   modalTitleContainer: {
     flex: 1,
+    marginRight: 12,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '600',
     color: '#253528',
+    marginBottom: 4,
+    lineHeight: 24,
   },
   modalCompany: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#49654E',
-    marginTop: 4,
+    fontWeight: '500',
   },
   modalClose: {
     padding: 4,
   },
   modalBody: {
-    marginBottom: 20,
+    gap: 16,
   },
   detailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    gap: 8,
   },
   detailText: {
     fontSize: 16,
     color: '#253528',
-    marginLeft: 10,
+    flex: 1,
   },
   applyButtonLarge: {
-    backgroundColor: '#49654E',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  applyButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 16,
-  },
-  noJobsContainer: {
-    padding: 16,
-    backgroundColor: '#F0F4F0',
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  noJobsText: {
-    fontSize: 16,
-    color: '#666666',
-  },
-});
-
-
-// Add these styles to your styles.ts file
-const additionalStyles = {
-  jobCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  jobApplyButton: {
-    backgroundColor: '#49654E',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  jobApplyText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  applyButtonLarge: {
-    backgroundColor: '#49654E',
-    paddingVertical: 12, 
-    paddingHorizontal: 24,
-    borderRadius: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 24,
-    marginBottom: 8,
-  },
-  applyButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 16,
+    backgroundColor: '#49654E',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginTop: 12,
   },
   applyButtonIcon: {
     marginRight: 8,
   },
-};
+  applyButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  processingHint: {
+    fontSize: 13,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  resumeViewText: {
+    fontSize: 16,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  resumeSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  resumeTextContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    marginLeft: 12,
+  },
+  resumeIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: '#E0E7E0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  resumeCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#E0E7E0',
+  },
+  resumeCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+
+  jobApplyButton: {
+    backgroundColor: '#49654E',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginTop: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  jobSalary: {
+    fontSize: 14,
+    color: '#253528',
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+
+  jobLocation: {
+    fontSize: 14,
+    color: '#253528',
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+
+});
 
 export default ChatScreen;
