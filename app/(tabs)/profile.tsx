@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Image, ActivityIndicator, RefreshControl, TouchableOpacity } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { supabase } from '../../lib/supabase'; // Import your supabase client
 import Navbar from '../components/navbar';
 import ProfileAPI from '../api/getprofile';
 
@@ -62,6 +63,17 @@ const ProfileScreen = () => {
     router.push('/(tabs)/edit');
   };
 
+  // Function to navigate to onboarding
+  const handleGoToOnboarding = () => {
+    router.push('/(tabs)/onboard');
+  };
+
+  // Function to handle sign out
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.replace('/');
+  };
+
   // Function to get company logo URL
   const getCompanyLogoUrl = (companyName: string) => {
     const cleanCompanyName = companyName.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -82,6 +94,13 @@ const ProfileScreen = () => {
       if (response.success && response.data) {
         setProfileData(response.data);
       } else {
+        // If no profile data exists, redirect to onboarding
+        if (response.error === 'No profile found' || 
+            response.error === 'Profile not found' || 
+            !response.data) {
+          router.replace('/(tabs)/onboard');
+          return;
+        }
         setError(response.error || 'Failed to load profile data');
       }
     } catch (err) {
@@ -142,6 +161,48 @@ const ProfileScreen = () => {
       fontSize: 14,
       color: '#49654E',
       textAlign: 'center' as const,
+      marginBottom: 16,
+    },
+    
+    // No profile state
+    noProfileContainer: {
+      backgroundColor: '#ffffff',
+      borderRadius: 8,
+      padding: 24,
+      margin: 12,
+      alignItems: 'center' as const,
+      elevation: 1,
+    },
+    noProfileIcon: {
+      marginBottom: 16,
+    },
+    noProfileTitle: {
+      fontSize: 18,
+      fontWeight: '600' as const,
+      color: '#253528',
+      textAlign: 'center' as const,
+      marginBottom: 8,
+    },
+    noProfileSubtitle: {
+      fontSize: 14,
+      color: '#666666',
+      textAlign: 'center' as const,
+      marginBottom: 20,
+      lineHeight: 20,
+    },
+    createProfileButton: {
+      backgroundColor: '#49654E',
+      paddingVertical: 12,
+      paddingHorizontal: 24,
+      borderRadius: 8,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+    },
+    createProfileButtonText: {
+      color: '#ffffff',
+      fontSize: 16,
+      fontWeight: '600' as const,
+      marginLeft: 8,
     },
     
     // Profile header
@@ -426,6 +487,26 @@ const ProfileScreen = () => {
       backgroundColor: '#a7cba9',
     },
     
+    // Sign out section
+    signOutContainer: {
+      backgroundColor: '#ffffff',
+      borderRadius: 8,
+      margin: 12,
+      marginTop: 0,
+      padding: 16,
+      elevation: 1,
+      alignItems: 'center' as const,
+    },
+    signOutButton: {
+      paddingVertical: 12,
+      paddingHorizontal: 20,
+    },
+    signOutText: {
+      fontSize: 16,
+      color: '#dc3545',
+      fontWeight: '500' as const,
+    },
+    
     // Bottom spacing for navbar
     navbarSpacing: {
       height: 60,
@@ -574,7 +655,7 @@ const ProfileScreen = () => {
     );
   }
 
-  // No profile data state
+  // No profile data state - Show onboarding option
   if (!profileData) {
     return (
       <View style={styles.container}>
@@ -584,10 +665,16 @@ const ProfileScreen = () => {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         >
-          <View style={styles.centerContainer}>
-            <Feather name="user" size={48} color="#49654E" />
-            <Text style={styles.loadingText}>No profile data found</Text>
-            <Text style={styles.retryText}>Pull down to refresh</Text>
+          <View style={styles.noProfileContainer}>
+            <Feather name="user-plus" size={64} color="#49654E" style={styles.noProfileIcon} />
+            <Text style={styles.noProfileTitle}>Welcome to Your Profile!</Text>
+            <Text style={styles.noProfileSubtitle}>
+              It looks like you haven't set up your profile yet. Let's get started by creating your professional profile.
+            </Text>
+            <TouchableOpacity style={styles.createProfileButton} onPress={handleGoToOnboarding}>
+              <Feather name="plus" size={16} color="#ffffff" />
+              <Text style={styles.createProfileButtonText}>Create Profile</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
         <Navbar />
@@ -695,6 +782,13 @@ const ProfileScreen = () => {
             )}
           </View>
         )}
+
+        {/* Sign Out Section */}
+        <View style={styles.signOutContainer}>
+          <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
+            <Text style={styles.signOutText}>Sign Out</Text>
+          </TouchableOpacity>
+        </View>
         
         <View style={styles.navbarSpacing} />
       </ScrollView>

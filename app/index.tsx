@@ -237,7 +237,7 @@ export default function WelcomePage() {
         if (profileExists) {
           router.replace('/(tabs)/chat');
         } else {
-          router.replace('/onboard');
+          router.replace('/(tabs)/onboard');
         }
       }
     } catch (error) {
@@ -434,10 +434,10 @@ export default function WelcomePage() {
         
         if (profileCreated) {
           console.log('✅ New profile created, redirecting to onboard');
-          router.replace('/onboard');
+          router.replace('/(tabs)/onboard');
         } else {
           console.log('⚠️ Profile creation failed, redirecting to onboard anyway');
-          router.replace('/onboard');
+          router.replace('/(tabs)/onboard');
         }
       }
       
