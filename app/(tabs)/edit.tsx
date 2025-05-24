@@ -7,7 +7,6 @@ import {
   ActivityIndicator, 
   TouchableOpacity, 
   TextInput,
-  Alert,
   KeyboardAvoidingView,
   Platform
 } from 'react-native';
@@ -97,43 +96,15 @@ const ProfileEditScreen = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Improved navigation function with multiple fallback options
+  // Simple navigation function
   const navigateToProfile = () => {
-    console.log('Starting navigation to profile...');
-    
-    // Try multiple navigation approaches
-    const navigationAttempts = [
-      () => router.push('/(tabs)/profile'),
-      () => router.replace('/(tabs)/profile'),
-      () => router.push('/profile'),
-      () => router.replace('/profile'),
-      () => router.navigate('/(tabs)/profile' as any),
-      () => router.back(),
-    ];
-
-    const attemptNavigation = async (index = 0) => {
-      if (index >= navigationAttempts.length) {
-        console.error('All navigation attempts failed');
-        Alert.alert(
-          'Navigation Error', 
-          'Unable to navigate to profile. Please use the navigation bar at the bottom.',
-          [{ text: 'OK' }]
-        );
-        return;
-      }
-
-      try {
-        console.log(`Navigation attempt ${index + 1}`);
-        await navigationAttempts[index]();
-        console.log(`Navigation attempt ${index + 1} successful`);
-      } catch (error) {
-        console.error(`Navigation attempt ${index + 1} failed:`, error);
-        // Try next approach after a short delay
-        setTimeout(() => attemptNavigation(index + 1), 100);
-      }
-    };
-
-    attemptNavigation();
+    try {
+      router.push('/(tabs)/profile');
+    } catch (error) {
+      console.error('Navigation error:', error);
+      // Fallback navigation
+      router.back();
+    }
   };
 
   // Transform API data to match ProfileData interface
@@ -182,7 +153,7 @@ const ProfileEditScreen = () => {
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
       
       if (permissionResult.granted === false) {
-        Alert.alert('Permission required', 'Permission to access camera roll is required!');
+        console.log('Permission to access camera roll denied');
         return;
       }
 
@@ -201,82 +172,47 @@ const ProfileEditScreen = () => {
         }));
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to select image');
       console.error('Image picker error:', error);
     }
   };
 
-  // Handle save profile with improved navigation
+  // Handle save profile
   const handleSave = async () => {
     if (saving) return; // Prevent multiple saves
     
+    // Basic validation - just check if name exists
+    if (!profileData.name.trim()) {
+      console.log('Name is required');
+      return;
+    }
+
     try {
       setSaving(true);
       setError(null);
-
-      // Validate required fields
-      if (!profileData.name.trim()) {
-        Alert.alert('Validation Error', 'Name is required');
-        setSaving(false);
-        return;
-      }
 
       console.log('Saving profile data:', profileData);
       const response = await ProfileAPI.saveProfile(profileData);
       
       if (response.success) {
         console.log('Profile saved successfully');
-        setSaving(false);
-        
-        // Show success message and navigate
-        Alert.alert(
-          'Success', 
-          response.message || 'Profile saved successfully!',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                // Navigate immediately after user confirms
-                navigateToProfile();
-              }
-            }
-          ],
-          { cancelable: false }
-        );
+        // Navigate directly without alert
+        navigateToProfile();
       } else {
-        setSaving(false);
+        console.error('Failed to save profile:', response.error);
         setError(response.error || 'Failed to save profile');
-        Alert.alert('Error', response.error || 'Failed to save profile');
       }
     } catch (err) {
-      setSaving(false);
-      const errorMessage = 'Network error occurred while saving profile';
-      setError(errorMessage);
-      Alert.alert('Error', errorMessage);
       console.error('Profile save error:', err);
+      setError('Network error occurred while saving profile');
+    } finally {
+      setSaving(false);
     }
   };
 
-  // Handle cancel with immediate navigation
+  // Handle cancel - navigate directly without confirmation
   const handleCancel = () => {
-    Alert.alert(
-      'Discard Changes?',
-      'Any unsaved changes will be lost. Are you sure you want to continue?',
-      [
-        {
-          text: 'Continue Editing',
-          style: 'cancel'
-        },
-        {
-          text: 'Discard Changes',
-          style: 'destructive',
-          onPress: () => {
-            console.log('User chose to discard changes');
-            navigateToProfile();
-          }
-        }
-      ]
-    );
+    console.log('Cancelling edit');
+    navigateToProfile();
   };
 
   // Add new experience
@@ -608,6 +544,7 @@ const ProfileEditScreen = () => {
     button: {
       flex: 1,
       paddingVertical: 14,
+      paddingHorizontal: 16,
       borderRadius: 8,
       alignItems: 'center' as const,
       justifyContent: 'center' as const,

@@ -25,6 +25,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as Google from 'expo-auth-session/providers/google';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import JobDetailCard from '../components/JobCard'; // Add this line
+import ResumeCard from '../components/ResumeCard'; 
 
 // Hardcoded Supabase credentials
 const SUPABASE_URL = 'https://ibwjjwzomoyhkxugmmmw.supabase.co';
@@ -79,7 +80,7 @@ const ChatScreen = () => {
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
 
-  // Get Google user ID from session
+   // Get Google user ID from session
   useEffect(() => {
     const getUserInfo = async () => {
       try {
@@ -377,10 +378,62 @@ const ChatScreen = () => {
     </View>
   );
 
+  // Resume Card Component
+  const ResumeCard = ({ message }: { message: string }) => {
+    // Check if message contains /resume command
+    const resumeMatch = message.match(/\/resume\s*:\s*(https?:\/\/[^\s]+)/i);
+    
+    if (!resumeMatch) return null;
+    
+    const resumeUrl = resumeMatch[1];
+    
+    const openResume = () => {
+      Linking.canOpenURL(resumeUrl)
+        .then(supported => {
+          if (supported) {
+            return Linking.openURL(resumeUrl);
+          } else {
+            Alert.alert('Error', 'Cannot open resume URL');
+          }
+        })
+        .catch(err => {
+          console.error('Error opening resume:', err);
+          Alert.alert('Error', 'Could not open the resume');
+        });
+    };
+
+    return (
+      <View style={styles.resumeCard}>
+        <View style={styles.resumeCardHeader}>
+          <View style={styles.resumeIconContainer}>
+            <Feather name="file-text" size={24} color="#49654E" />
+          </View>
+          <View style={styles.resumeTextContainer}>
+            <Text style={styles.resumeTitle}>Resume Document</Text>
+            <Text style={styles.resumeSubtitle}>Click to view or download</Text>
+          </View>
+        </View>
+        <TouchableOpacity 
+          style={styles.resumeViewButton}
+          onPress={openResume}
+          activeOpacity={0.7}
+        >
+          <Feather name="external-link" size={16} color="#FFFFFF" />
+          <Text style={styles.resumeViewText}>View Resume</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   const renderMessage = ({ item }: { item: Message }) => {
     // Check if the message contains /jobdata command
     if (!item.is_user_message && item.content.toLowerCase().includes('/jobdata')) {
       return <JobDetailCard message={item.content} />;
+    }
+    
+    // Check if the message contains /resume command
+    if (item.content.toLowerCase().includes('/resume')) {
+      return <ResumeCard message={item.content} />;
     }
     
     // For job search messages, only show user message bubble without assistant response
@@ -566,7 +619,6 @@ const ChatScreen = () => {
     </SafeAreaView>
   );
 };
-
 
 const styles = StyleSheet.create({
   safeArea: {
