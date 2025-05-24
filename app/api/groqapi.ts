@@ -85,6 +85,129 @@ const safeJsonParse = (jsonString: string) => {
   }
 };
 
+// Helper function to add messages individually
+const addMessage = async (chatId: string, content: string, isUserMessage: boolean, timestamp: string) => {
+  const { error } = await supabase
+    .from('messages')
+    .insert({
+      chat_id: chatId,
+      content: content,
+      is_user_message: isUserMessage,
+      timestamp: timestamp
+    });
+  
+  if (error) {
+    console.error('Error adding message:', error);
+    throw new Error(`Failed to add message: ${error.message}`);
+  }
+};
+
+// Helper function to create a new chat
+const createNewChat = async (userId: string, title: string, emoji: string) => {
+  const chatId = uuidv4();
+  const timestamp = new Date().toISOString();
+  
+  const { error } = await supabase
+    .from('chats')
+    .insert({
+      id: chatId,
+      user_id: userId,
+      title: title,
+      emoji: emoji,
+      created_at: timestamp,
+      updated_at: timestamp
+    });
+  
+  if (error) {
+    console.error('Error creating chat:', error);
+    throw new Error(`Failed to create chat: ${error.message}`);
+  }
+  
+  return chatId;
+};
+
+// Helper function to update or insert context using upsert
+const updateChatContext = async (chatId: string, context: string, timestamp: string) => {
+  // Use upsert to handle both insert and update cases
+  // Since chat_id has a unique constraint, this will update if exists, insert if not
+  const { error } = await supabase
+    .from('chat_contexts')
+    .upsert({
+      chat_id: chatId,
+      context: context,
+      timestamp: timestamp
+    }, {
+      onConflict: 'chat_id' // Specify the conflict column
+    });
+  
+  if (error) {
+    console.error('Error upserting context:', error);
+    throw new Error(`Failed to upsert context: ${error.message}`);
+  }
+};
+
+// Helper function to get conversation context
+const getConversationContext = async (chatId: string) => {
+  try {
+    // Get the last bot message for context continuity
+    const { data: lastBotMessage, error: lastBotError } = await supabase
+      .from('messages')
+      .select('content')
+      .eq('chat_id', chatId)
+      .eq('is_user_message', false)
+      .order('timestamp', { ascending: false })
+      .limit(1)
+      .single();
+
+    // Get recent conversation history (last 6 messages for context)
+    const { data: recentMessages, error: recentError } = await supabase
+      .from('messages')
+      .select('is_user_message, content, timestamp')
+      .eq('chat_id', chatId)
+      .order('timestamp', { ascending: false })
+      .limit(6);
+
+    // Get stored context
+    const { data: contextData, error: contextError } = await supabase
+      .from('chat_contexts')
+      .select('context')
+      .eq('chat_id', chatId)
+      .single();
+
+    let conversationHistory = '';
+    let lastBotResponse = '';
+    let storedContext = '';
+
+    if (!recentError && recentMessages && recentMessages.length > 0) {
+      conversationHistory = recentMessages
+        .reverse() // Show chronological order
+        .map(msg => `${msg.is_user_message ? 'User' : 'Assistant'}: ${msg.content}`)
+        .join('\n');
+    }
+
+    if (!lastBotError && lastBotMessage) {
+      lastBotResponse = lastBotMessage.content;
+    }
+
+    if (!contextError && contextData) {
+      storedContext = contextData.context;
+    }
+
+    return {
+      conversationHistory,
+      lastBotResponse,
+      storedContext
+    };
+  } catch (error) {
+    console.error('Error getting conversation context:', error);
+    return {
+      conversationHistory: '',
+      lastBotResponse: '',
+      storedContext: ''
+    };
+  }
+};
+
 export const processWithGroq = async (request: GroqRequest): Promise<GroqResponse> => {
   try {
     const { message, userId } = request;
@@ -98,21 +221,20 @@ export const processWithGroq = async (request: GroqRequest): Promise<GroqRespons
     let updatedEmoji = emoji || "💬";
     let botResponse = "";
     
-    // For existing chats, fetch full information
+    // Get conversation context for existing chats
+    let conversationHistory = '';
+    let lastBotResponse = '';
+    let storedContext = '';
+    
     if (chatId) {
-      // Fetch existing context if not provided but chatId exists
+      const contextData = await getConversationContext(chatId);
+      conversationHistory = contextData.conversationHistory;
+      lastBotResponse = contextData.lastBotResponse;
+      storedContext = contextData.storedContext;
+      
+      // Use stored context if no context provided
       if (!context) {
-        const { data: contextData, error: contextError } = await supabase
-          .from('chat_contexts')
-          .select('context')
-          .eq('chat_id', chatId)
-          .single();
-          
-        if (!contextError && contextData) {
-          updatedContext = contextData.context;
-        } else {
-          updatedContext = '';
-        }
+        updatedContext = storedContext;
       }
       
       // Fetch chat details if not provided
@@ -129,29 +251,6 @@ export const processWithGroq = async (request: GroqRequest): Promise<GroqRespons
         updatedChatName = chatName || 'Ongoing Conversation';
         updatedEmoji = emoji || '💬';
       }
-      
-      // Fetch recent message history to enhance context
-      const { data: recentMessages, error: messagesError } = await supabase
-        .from('messages')
-        .select('is_user_message, content')
-        .eq('chat_id', chatId)
-        .order('timestamp', { ascending: false })
-        .limit(10);
-        
-      if (!messagesError && recentMessages) {
-        // Create a context summary from recent messages if we have a limited context
-        if (!updatedContext || updatedContext.length < 1000) {
-          const recentExchanges = recentMessages
-            .reverse()
-            .map(msg => `${msg.is_user_message ? 'User' : 'Assistant'}: ${msg.content}`)
-            .join('\n');
-            
-          // Append recent exchanges to existing context or create new context
-          updatedContext = updatedContext 
-            ? `${updatedContext}\n\nRecent conversation:\n${recentExchanges}` 
-            : `Conversation history:\n${recentExchanges}`;
-        }
-      }
     } else {
       // Create a new chat if chatId is not provided
       // Generate a default chat name based on first message
@@ -164,18 +263,47 @@ export const processWithGroq = async (request: GroqRequest): Promise<GroqRespons
       updatedContext = context || '';
     }
     
-    // Construct the system prompt that handles community search, job detection, resume generation, and normal responses
+    // Construct the enhanced system prompt with context
     const systemPrompt = `You are Asha, a supportive female assistant focused on jobs, careers, and mental health for women. Stay strictly on these topics and maintain professional boundaries.
+
+${chatId ? `CONVERSATION CONTEXT:
+Previous conversation summary: ${updatedContext}
+
+Recent conversation history:
+${conversationHistory}
+
+Your last response was: ${lastBotResponse}
+
+Continue this conversation naturally, referring to previous topics when relevant.` : 'This is the start of a new conversation.'}
 
 Core Behavior:
 - Respond warmly and conversationally in the same language as the user
 - IF you are creating JSON Output don't generate any extra text follow the template strictly
-- Stay focused on career guidance, job searching, resume building, community finding, and mental health support
+- Stay focused on career guidance, job searching, resume building, community finding, course recommendations, job portals, and mental health support
 - Do not entertain inappropriate behavior or off-topic requests
+- Do not filter out emojis from responses
+- Reference previous conversation when relevant and helpful
 
 Response Protocol:
+1. Course Search Requests
+If user asks about courses, learning, education, training, skill development, or certification in current message, respond ONLY with:
+"/courses
+name1:platform:link1
+name2:platform:link2
+name3:platform:link3
+name4:platform:link4
+name5:platform:link5"
 
-1. Community Search Requests
+Provide 5 relevant courses with:
+- name: Course name
+- platform: Platform name (Coursera, Udemy, LinkedIn Learning, edX, Khan Academy, etc.)
+- link: Direct URL to the course
+
+2. Job Portal Requests
+If user asks about job portals, job websites, job boards, where to find jobs, or job platforms in current message, respond ONLY with:
+"/jobportals"
+
+3. Community Search Requests
 If user asks about finding communities, groups, support networks, or mentions wanting to connect with others in current message, respond ONLY with:
 "/community
 name1:platform:link1
@@ -189,19 +317,21 @@ Provide 5 relevant communities with:
 - platform: Platform name (Discord, Reddit, Facebook, LinkedIn, Telegram, etc.)
 - link: Direct URL or invitation link
 
-2. Resume/CV Requests
+4. Resume/CV Requests
 If user asks about resume generation in current message, CV creation, or resume building, respond ONLY with:
 "GENERATEPDF"
 
-3. Job Search Requests
+5. Job Search Requests
 If user asks about specific jobs, employment opportunities, or mentions a job title they want in current message, respond ONLY with:
 "JOB_SEARCH: [job_title] [location]"
 Use "India" if no location specified.
 
-4. All Other Messages
+6. All Other Messages
 Provide detailed JSON output only nothing else no extra text. 
-IF its a casual message give a casual response in plain text. If its casual give natural shot response and use emojis if required.
+Answer it Considering Previous Message Context and conversation flow.
+IF its a casual message give a casual response in plain text. If its casual give natural short response and use emojis if required.
 For Informative message make it pointwise in very long detail and use markdown and give proper links.
+
 For both Informative and general chat follow this below structure strictly and no extra text:
 
 IMPORTANT: When creating JSON, ensure all string values are properly escaped:
@@ -209,20 +339,23 @@ IMPORTANT: When creating JSON, ensure all string values are properly escaped:
 - Replace all quotes with \\"  
 - Replace all backslashes with \\\\
 - Keep markdown formatting but escape it properly
+- DO NOT filter out emojis - preserve all emojis in responses
 
 {
-  "response": "Natural, supportive response in user's language with minimal emojis or For informative query reply in markdown very long in very detail and pointwise ",
-  "context": "Comprehensive conversation context for future reference", 
-  "chatName": "Suggested conversation title",
+  "response": "Natural, supportive response in user's language with emojis preserved or For informative query reply in markdown very long in very detail and pointwise. Reference previous conversation when relevant.",
+  "context": "Comprehensive conversation context including this exchange for future reference", 
+  "chatName": "Suggested conversation title based on the overall conversation",
   "emoji": "Single relevant aesthetic emoji"
 }
 
 Response Guidelines:
 - Use proper grammar and local expressions when appropriate
 - Be genuinely engaging and emotionally supportive
-- Keep responses focused on career development, mental wellness, and community building
+- Keep responses focused on career development, mental wellness, community building, courses, and job searching
 - Redirect off-topic conversations back to core subjects
-- Maintain professional boundaries while being warm and approachable`;
+- Maintain professional boundaries while being warm and approachable
+- Preserve all emojis in responses and conversations
+- Build upon previous conversation points when relevant`;
 
     // Make single Groq request
     const response = await groqClient.chat.completions.create({
@@ -237,8 +370,36 @@ Response Guidelines:
 
     const groqResponse = response.choices[0]?.message?.content || '';
 
+    // Check if this is a course search request
+    if (groqResponse.startsWith('/courses')) {
+      botResponse = groqResponse;
+      
+      // Use course-related emoji and chat name for new chats
+      if (!chatId) {
+        updatedEmoji = emoji || '📚';
+        updatedChatName = chatName || 'Course Search';
+        updatedContext = 'User requested course search. Provided course recommendations.';
+      } else {
+        // Update context for existing chats
+        updatedContext = `${updatedContext}\n\nUser: ${message}\nAssistant: Provided course search results based on user's request.`;
+      }
+    }
+    // Check if this is a job portal request
+    else if (groqResponse.trim() === '/jobportals') {
+      botResponse = '/jobportals';
+      
+      // Use job portal-related emoji and chat name for new chats
+      if (!chatId) {
+        updatedEmoji = emoji || '🌐';
+        updatedChatName = chatName || 'Job Portals';
+        updatedContext = 'User requested job portals information.';
+      } else {
+        // Update context for existing chats
+        updatedContext = `${updatedContext}\n\nUser: ${message}\nAssistant: Provided job portals information.`;
+      }
+    }
     // Check if this is a community search request
-    if (groqResponse.startsWith('/community')) {
+    else if (groqResponse.startsWith('/community')) {
       botResponse = groqResponse;
       
       // Use community-related emoji and chat name for new chats
@@ -248,7 +409,7 @@ Response Guidelines:
         updatedContext = 'User requested community search. Provided community recommendations.';
       } else {
         // Update context for existing chats
-        updatedContext = `${updatedContext}\n\nUser requested community search. Provided community recommendations.`;
+        updatedContext = `${updatedContext}\n\nUser: ${message}\nAssistant: Provided community search results.`;
       }
     }
     // Check if this is a resume generation request
@@ -267,7 +428,7 @@ Response Guidelines:
           updatedContext = 'User requested resume generation. Generated resume successfully.';
         } else {
           // Update context for existing chats
-          updatedContext = `${updatedContext}\n\nUser requested resume generation. Generated resume successfully.`;
+          updatedContext = `${updatedContext}\n\nUser: ${message}\nAssistant: Generated resume for user.`;
         }
       } catch (error) {
         console.error('Resume generation error:', error);
@@ -298,7 +459,7 @@ Response Guidelines:
             updatedContext = `User is searching for ${jobTitle} jobs${location !== 'anywhere' ? ` in ${location}` : ''}. Providing job search results.`;
           } else {
             // Update context for existing chats
-            updatedContext = `${updatedContext}\n\nUser searched for ${jobTitle} jobs${location !== 'anywhere' ? ` in ${location}` : ''}. Provided job search results.`;
+            updatedContext = `${updatedContext}\n\nUser: ${message}\nAssistant: Searched for ${jobTitle} jobs${location !== 'anywhere' ? ` in ${location}` : ''} and provided results.`;
           }
         } catch (error) {
           console.error('Job search error:', error);
@@ -313,52 +474,52 @@ Response Guidelines:
       
       if (parsedResponse && parsedResponse.response) {
         botResponse = parsedResponse.response;
-        updatedContext = parsedResponse.context || updatedContext;
+        // Update context with the conversation flow
+        if (parsedResponse.context) {
+          updatedContext = parsedResponse.context;
+        } else {
+          // Build context from the current exchange
+          updatedContext = chatId 
+            ? `${updatedContext}\n\nUser: ${message}\nAssistant: ${botResponse.substring(0, 200)}${botResponse.length > 200 ? '...' : ''}`
+            : `User: ${message}\nAssistant: ${botResponse.substring(0, 200)}${botResponse.length > 200 ? '...' : ''}`;
+        }
         updatedChatName = parsedResponse.chatName || updatedChatName;
         updatedEmoji = parsedResponse.emoji || updatedEmoji;
       } else {
         console.warn("Failed to parse GROQ response, using fallback");
         // Fallback if JSON parsing completely fails
         botResponse = groqResponse || "I'm here to help! How can I assist you today?";
+        // Still update context for continuity
+        updatedContext = chatId 
+          ? `${updatedContext}\n\nUser: ${message}\nAssistant: ${botResponse.substring(0, 200)}${botResponse.length > 200 ? '...' : ''}`
+          : `User: ${message}\nAssistant: ${botResponse.substring(0, 200)}${botResponse.length > 200 ? '...' : ''}`;
       }
     }
     
     // Handle database operations based on whether this is a new or existing chat
     if (!chatId) {
-      // Create new chat with all information
-      const { data: newChatId, error: createError } = await supabase.rpc(
-        'create_chat_with_messages',
-        {
-          user_id: userId,
-          title: updatedChatName,
-          user_message: message,
-          bot_response: botResponse,
-          context: updatedContext,
-          p_emoji: updatedEmoji
-        }
-      );
+      // Create new chat first
+      generatedChatId = await createNewChat(userId, updatedChatName, updatedEmoji);
       
-      if (createError) throw new Error(`Failed to create chat: ${createError.message}`);
-      generatedChatId = newChatId || generatedChatId;
+      // Add user message
+      await addMessage(generatedChatId, message, true, timestamp);
+      
+      // Add bot response
+      await addMessage(generatedChatId, botResponse, false, timestamp);
+      
+      // Add context
+      await updateChatContext(generatedChatId, updatedContext, timestamp);
+      
     } else {
-      // Add message pair for existing chat
-      await supabase.rpc('add_message_pair', {
-        chat_id: chatId,
-        user_message: message,
-        bot_response: botResponse
-      });
+      // Add messages for existing chat
+      await addMessage(chatId, message, true, timestamp);
+      await addMessage(chatId, botResponse, false, timestamp);
       
-      // Update context with enhanced information
-      await supabase
-        .from('chat_contexts')
-        .upsert({
-          chat_id: chatId,
-          context: updatedContext,
-          timestamp: timestamp
-        });
+      // Update context
+      await updateChatContext(chatId, updatedContext, timestamp);
       
       // Update chat details if they've changed
-      await supabase
+      const { error: updateError } = await supabase
         .from('chats')
         .update({ 
           title: updatedChatName,
@@ -366,7 +527,11 @@ Response Guidelines:
           updated_at: timestamp
         })
         .eq('id', chatId);
-
+      
+      if (updateError) {
+        console.error('Error updating chat:', updateError);
+      }
+      
       generatedChatId = chatId;
     }
     
@@ -389,11 +554,8 @@ Response Guidelines:
     // If we have a chatId, still try to save the error message
     if (request.chatId) {
       try {
-        await supabase.rpc('add_message_pair', {
-          chat_id: request.chatId,
-          user_message: request.message,
-          bot_response: "Sorry, I encountered an error while processing your message. Please try again."
-        });
+        await addMessage(request.chatId, request.message, true, new Date().toISOString());
+        await addMessage(request.chatId, "Sorry, I encountered an error while processing your message. Please try again.", false, new Date().toISOString());
       } catch (dbError) {
         console.error('Failed to save error message:', dbError);
       }

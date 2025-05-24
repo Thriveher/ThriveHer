@@ -27,6 +27,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import JobDetailCard from '../components/JobCard'; // Add this line
 import ResumeCard from '../components/ResumeCard'; 
 import CommunityCard from '../components/CommunityCard';
+import JobPortalsCard from '../components/JobPortalCard';
+import CourseCard from '../components/CourseCard'; // New import for CourseCard
+import VoiceRecordingOverlay from '../components/Voice'
+
 
 // Hardcoded Supabase credentials
 const SUPABASE_URL = 'https://ibwjjwzomoyhkxugmmmw.supabase.co';
@@ -56,8 +60,8 @@ interface GroqRequestParams {
   chatName: string;
   context: string;
   userId: string;
-}
- 
+} 
+
 
 const ChatScreen = () => {
   const { id: chatId } = useLocalSearchParams<{ id: string }>();
@@ -69,13 +73,13 @@ const ChatScreen = () => {
   const [sending, setSending] = useState<boolean>(false);
   const [inputText, setInputText] = useState<string>('');
   const [context, setContext] = useState<string>('');
-  const [showCommands, setShowCommands] = useState<boolean>(false);
   const [userId, setUserId] = useState<string>(FALLBACK_USER_ID);
+  const [isVoiceOverlayOpen, setIsVoiceOverlayOpen] = useState<boolean>(false);
   
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
 
-   // Get Google user ID from session
+  // Get Google user ID from session
   useEffect(() => {
     const getUserInfo = async () => {
       try {
@@ -105,15 +109,6 @@ const ChatScreen = () => {
     }
   }, [chatId]);
 
-  useEffect(() => {
-    // Show command suggestions when user types '/'
-    if (inputText === '/') {
-      setShowCommands(true);
-    } else if (inputText.length > 0 && !inputText.startsWith('/')) {
-      setShowCommands(false);
-    }
-  }, [inputText]);
-
   const loadChatMessages = async () => {
     try {
       setLoading(true);
@@ -133,18 +128,20 @@ const ChatScreen = () => {
     }
   };
 
-  const handleSendMessage = async () => {
-    if (!inputText.trim() || !chatId) return;
+  const handleSendMessage = async (messageText?: string) => {
+    const messageToSend = messageText || inputText.trim();
+    if (!messageToSend || !chatId) return;
     
-    const userMessage = inputText.trim();
-    setInputText('');
-    setShowCommands(false);
+    // Only clear input if using typed text (not voice)
+    if (!messageText) {
+      setInputText('');
+    }
     
     // Optimistically add user message to the UI
     const tempUserMessageId = `temp-${Date.now()}`;
     const newUserMessage: Message = {
       id: tempUserMessageId,
-      content: userMessage,
+      content: messageToSend,
       is_user_message: true,
       timestamp: new Date().toISOString(),
     };
@@ -158,7 +155,7 @@ const ChatScreen = () => {
     try {
       // Process with Groq API using correct parameters (fix for error #2)
       const groqResponse = await processWithGroq({
-        message: userMessage,
+        message: messageToSend,
         chatId,
         chatName: decodeURIComponent(chatName),
         context,
@@ -171,7 +168,7 @@ const ChatScreen = () => {
       // Save both messages to the database with correct parameters (fix for error #3)
       await sendMessage(
         chatId, 
-        userMessage, 
+        messageToSend, 
         botResponse, 
         updatedContext
       );
@@ -218,18 +215,26 @@ const ChatScreen = () => {
     }
   };
 
-  const handleCommandSelect = (command: string) => {
-    setInputText(command + ' ');
-    setShowCommands(false);
-    // Focus the input after selecting a command
-    inputRef.current?.focus();
-  };
-
   const scrollToBottom = () => {
     if (flatListRef.current && messages.length > 0) {
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
       }, 100);
+    }
+  };
+
+  const handleOpenVoiceRecording = () => {
+    // Check if audio recording is supported (you'll need to implement this check)
+    setIsVoiceOverlayOpen(true);
+  };
+
+  // Modified to directly send the transcribed message instead of putting it in input
+  const handleTranscriptionComplete = (transcribedText: string) => {
+    setIsVoiceOverlayOpen(false);
+    
+    // Directly send the transcribed text as a message
+    if (transcribedText.trim()) {
+      handleSendMessage(transcribedText.trim());
     }
   };
 
@@ -249,6 +254,16 @@ const ChatScreen = () => {
       return <CommunityCard message={item.content} />;
     }
     
+    // Check if the message contains /jobportals command
+    if (!item.is_user_message && item.content.toLowerCase().includes('/jobportals')) {
+      return <JobPortalsCard message={item.content} />;
+    }
+    
+    // Check if the message contains /course command
+    if (!item.is_user_message && item.content.toLowerCase().includes('/course')) {
+      return <CourseCard message={item.content} />;
+    }
+    
     // For all other messages, render normal message bubbles
     return (
       <View>
@@ -260,16 +275,6 @@ const ChatScreen = () => {
       </View>
     );
   };
-
-  const renderCommandSuggestion = ({ item }: { item: CommandSuggestion }) => (
-    <TouchableOpacity 
-      style={styles.commandItem} 
-      onPress={() => handleCommandSelect(item.command)}
-    >
-      <Text style={styles.commandText}>{item.command}</Text>
-      <Text style={styles.commandDescription}>{item.description}</Text>
-    </TouchableOpacity>
-  );
 
   const handleBackPress = () => {
     // Changed to navigate to /chat instead of using router.back()
@@ -311,17 +316,6 @@ const ChatScreen = () => {
           />
         )}
 
-        {showCommands && (
-          <View style={styles.commandsContainer}>
-            <FlatList
-              data={COMMANDS}
-              renderItem={renderCommandSuggestion}
-              keyExtractor={(item) => item.command}
-              style={styles.commandsList}
-            />
-          </View>
-        )}
-
         <View style={styles.inputContainer}>
           <TextInput
             ref={inputRef}
@@ -334,22 +328,40 @@ const ChatScreen = () => {
             multiline
             maxLength={2000}
           />
-          <TouchableOpacity 
-            style={[
-              styles.sendButton,
-              (!inputText.trim() || sending) && styles.sendButtonDisabled
-            ]}
-            onPress={handleSendMessage}
-            disabled={!inputText.trim() || sending}
-            activeOpacity={0.7} // Add feedback when pressed
-          >
-            {sending ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <MaterialIcons name="send" size={20} color="#FFFFFF" />
-            )}
-          </TouchableOpacity>
+          
+          {inputText.trim() ? (
+            <TouchableOpacity 
+              style={[
+                styles.sendButton,
+                sending && styles.sendButtonDisabled
+              ]}
+              onPress={() => handleSendMessage()}
+              disabled={sending}
+              activeOpacity={0.7}
+            >
+              {sending ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <MaterialIcons name="send" size={20} color="#FFFFFF" />
+              )}
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity 
+              style={styles.voiceButton}
+              onPress={handleOpenVoiceRecording}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons name="mic" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          )}
         </View>
+
+        {/* Voice Recording Overlay */}
+        <VoiceRecordingOverlay
+          isOpen={isVoiceOverlayOpen}
+          onClose={() => setIsVoiceOverlayOpen(false)}
+          onTranscriptionComplete={handleTranscriptionComplete}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -629,6 +641,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666666',
   },
+  voiceButton: {
+  backgroundColor: '#8BA889',
+  width: 40,
+  height: 40,
+  borderRadius: 20,
+  justifyContent: 'center',
+  alignItems: 'center',
+  marginLeft: 8,
+},
 });
 
 
@@ -676,7 +697,7 @@ const additionalStyles = {
   },
   applyButtonIcon: {
     marginRight: 8,
-  },
+  }
 };
 
 export default ChatScreen;

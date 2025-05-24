@@ -27,6 +27,27 @@ const MessageBubble = ({
     }
   };
 
+  // Convert text with newlines to proper React Native format
+  const convertNewlinesToElements = (text: string): (string | JSX.Element)[] => {
+    const parts = text.split('\n');
+    const result: (string | JSX.Element)[] = [];
+    
+    parts.forEach((part, index) => {
+      if (index > 0) {
+        // Add newline element before each part (except first)
+        result.push(<Text key={`nl-${index}`}>{'\n'}</Text>);
+      }
+      if (part.length > 0) {
+        result.push(part);
+      } else if (index > 0 && index < parts.length - 1) {
+        // Handle empty lines in the middle
+        result.push(' ');
+      }
+    });
+    
+    return result;
+  };
+
   // Simple markdown parser for basic formatting
   const parseMarkdown = (text: string) => {
     const elements: JSX.Element[] = [];
@@ -36,29 +57,34 @@ const MessageBubble = ({
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       
+      // Add line break before each line except the first
+      if (i > 0) {
+        elements.push(<Text key={`lb-${key++}`}>{'\n'}</Text>);
+      }
+      
       // Handle headers (including #### for h4)
       if (line.startsWith('#### ')) {
         elements.push(
           <Text key={key++} style={styles.h4}>
-            {line.substring(5)}
+            {parseInlineMarkdown(line.substring(5))}
           </Text>
         );
       } else if (line.startsWith('### ')) {
         elements.push(
           <Text key={key++} style={styles.h3}>
-            {line.substring(4)}
+            {parseInlineMarkdown(line.substring(4))}
           </Text>
         );
       } else if (line.startsWith('## ')) {
         elements.push(
           <Text key={key++} style={styles.h2}>
-            {line.substring(3)}
+            {parseInlineMarkdown(line.substring(3))}
           </Text>
         );
       } else if (line.startsWith('# ')) {
         elements.push(
           <Text key={key++} style={styles.h1}>
-            {line.substring(2)}
+            {parseInlineMarkdown(line.substring(2))}
           </Text>
         );
       }
@@ -83,7 +109,7 @@ const MessageBubble = ({
         elements.push(
           <View key={key++} style={styles.blockquote}>
             <Text style={styles.blockquoteText}>
-              {line.substring(2)}
+              {parseInlineMarkdown(line.substring(2))}
             </Text>
           </View>
         );
@@ -113,7 +139,7 @@ const MessageBubble = ({
           );
         }
       }
-      // Handle regular paragraphs (including empty lines as line breaks)
+      // Handle regular paragraphs and empty lines
       else if (line.trim()) {
         elements.push(
           <Text key={key++} style={styles.paragraph}>
@@ -121,9 +147,13 @@ const MessageBubble = ({
           </Text>
         );
       }
-      // Handle empty lines as line breaks (enhanced \n handling)
-      else {
-        elements.push(<View key={key++} style={styles.lineBreak} />);
+      // Handle empty lines - just add a small space to maintain structure
+      else if (i > 0 && i < lines.length - 1) {
+        elements.push(
+          <Text key={key++} style={styles.normalText}>
+            {' '}
+          </Text>
+        );
       }
     }
 
@@ -132,6 +162,23 @@ const MessageBubble = ({
 
   // Parse inline markdown with proper link handling (both markdown links and plain URLs)
   const parseInlineMarkdown = (text: string): JSX.Element => {
+    // First handle newlines in the text
+    if (text.includes('\n')) {
+      const parts = convertNewlinesToElements(text);
+      const processedParts = parts.map((part, index) => {
+        if (typeof part === 'string') {
+          return <Text key={index}>{parseInlineMarkdownSingleLine(part)}</Text>;
+        }
+        return part; // JSX newline element
+      });
+      return <Text>{processedParts}</Text>;
+    }
+    
+    return parseInlineMarkdownSingleLine(text);
+  };
+
+  // Parse inline markdown for a single line (no newlines)
+  const parseInlineMarkdownSingleLine = (text: string): JSX.Element => {
     // Check for both markdown links and plain URLs
     const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
     const urlRegex = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
@@ -240,38 +287,18 @@ const MessageBubble = ({
     return <Text>{elements}</Text>;
   };
 
-  // Parse text formatting (bold, italic, code, and { } blocks) without links, handling newlines
+  // Parse text formatting (bold, italic, code, and { } blocks) without links or newlines
   const parseTextWithFormatting = (text: string): JSX.Element => {
-    // Enhanced newline handling - treat ALL newlines as line breaks, including connected words
-    if (text.includes('\n')) {
-      const parts = text.split('\n');
-      return (
-        <Text>
-          {parts.map((part, index) => (
-            <Text key={index}>
-              {part ? parseLineFormatting(part) : ''}
-              {index < parts.length - 1 && '\n'}
-            </Text>
-          ))}
-        </Text>
-      );
-    }
-    
-    return parseLineFormatting(text);
-  };
-
-  // Parse formatting for a single line
-  const parseLineFormatting = (text: string): JSX.Element => {
     const elements: JSX.Element[] = [];
     let currentIndex = 0;
     let key = 0;
 
     // Regex patterns for inline markdown (including { } for special formatting)
     const patterns = [
-      { regex: /\*\*((?:[^*]|\*(?!\*))+?)\*\*/g, style: styles.bold },   // **bold** (improved)
-      { regex: /\*([^*]+?)\*/g, style: styles.italic },                  // *italic* (improved)
-      { regex: /`([^`]+?)`/g, style: styles.inlineCode },                // `code` (improved)
-      { regex: /\{([^}]+?)\}/g, style: styles.specialBlock },            // {special formatting} (improved)
+      { regex: /\*\*((?:[^*]|\*(?!\*))+?)\*\*/g, style: styles.bold },   // **bold**
+      { regex: /\*([^*]+?)\*/g, style: styles.italic },                  // *italic*
+      { regex: /`([^`]+?)`/g, style: styles.inlineCode },                // `code`
+      { regex: /\{([^}]+?)\}/g, style: styles.specialBlock },            // {special formatting}
     ];
 
     // Find all matches
@@ -366,8 +393,13 @@ const MessageBubble = ({
                      message.includes('\n') ||
                      /\{.*?\}/.test(message) ||
                      /\*\*.*?\*\*/.test(message) ||
-                     /\n\S/.test(message) || // Detect newline followed by any non-whitespace
-                     message.split('\n').length > 1; // Any multiline text should be treated as markdown
+                     message.split('\n').length > 1;
+
+  // Helper function to properly render plain text with newlines
+  const renderPlainTextWithNewlines = (text: string) => {
+    const elements = convertNewlinesToElements(text);
+    return <Text>{elements}</Text>;
+  };
 
   return (
     <View style={[
@@ -387,12 +419,7 @@ const MessageBubble = ({
             styles.messageText,
             isUser ? styles.userText : styles.botText
           ]}>
-            {message.split('\n').map((line, index, array) => (
-              <Text key={index}>
-                {line}
-                {index < array.length - 1 && '\n'}
-              </Text>
-            ))}
+            {renderPlainTextWithNewlines(message)}
           </Text>
         )}
       </View>
