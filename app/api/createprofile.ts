@@ -325,20 +325,20 @@ For interests, generate professional and personal interests that align with thei
 Respond with a JSON object following this exact structure (no additional text, only JSON):
 {
   "summary": "A compelling 1-3 short sentence professional summary written in first person",
-  "strengths": ["Strength 1", "Strength 2", "Strength 3", "Strength 4", "Strength 5", "Strength 6", "Strength 7", "Strength 8"],
+  "strengths": ["Strength 1", "Strength 2", "Strength 3"],
   "enhanced_education": [
     {
       "institution": "Same as input",
       "degree": "Same as input",
       "field_of_study": "Relevant field based on degree",
-      "description": "1-3 short sentences in first person about education experience",
+      "description": "1-2 very short sentences in first person about education experience",
     }
   ],
   "enhanced_experience": [
     {
       "company": "Same as input",
       "position": "Same as input", 
-      "description": "1-3 short sentences in first person about work experience and what you learned",
+      "description": "1-2 very short sentences in first person about work experience and what you learned",
       "skills_used": ["Skill 1", "Skill 2", "Skill 3", "Skill 4", "Skill 5"],
     }
   ],
@@ -349,7 +349,7 @@ Respond with a JSON object following this exact structure (no additional text, o
       "description": "Brief description of what this certificate demonstrates or validates"
     }
   ],
-  "interests": ["Professional Interest 1", "Personal Interest 1", "Interest 2", "Interest 3", "Interest 4"]
+  "interests": ["Professional Interest 1", "Personal Interest 1", "Interest 2"]
 }`;
 
       const completion = await groq.chat.completions.create({
