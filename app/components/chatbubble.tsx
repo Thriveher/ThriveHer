@@ -13,7 +13,13 @@ const MessageBubble = ({
   timestamp
 }: MessageBubbleProps) => {
   
-  // Handle link press
+  // Preprocess text to handle literal \n sequences
+  const preprocessText = (text: string) => {
+    // Replace literal \n with actual newlines
+    return text.replace(/\\n/g, '\n');
+  };
+
+  const processedMessage = preprocessText(message);
   const handleLinkPress = async (url: string) => {
     try {
       const supported = await Linking.canOpenURL(url);
@@ -30,54 +36,71 @@ const MessageBubble = ({
   // Simple markdown parser for basic formatting
   const parseMarkdown = (text: string) => {
     const elements: JSX.Element[] = [];
-    // Split by newline characters and preserve them
-    const lines = text.split('\n');
+    // Split by actual newline characters and preserve them
+    const lines = text.split(/\n/);
     let key = 0;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
+      const trimmedLine = line.trim();
       
-      // Add line break before each line except the first
-      if (i > 0) {
-        elements.push(<Text key={`lb-${key++}`}>{'\n'}</Text>);
+      // Skip completely empty lines but add spacing
+      if (trimmedLine === '') {
+        if (i > 0) {
+          elements.push(
+            <Text key={`empty-${key++}`} style={styles.emptyLine}>
+              {'\n'}
+            </Text>
+          );
+        }
+        continue;
+      }
+      
+      // Add line break before each line except the first non-empty line
+      if (elements.length > 0) {
+        elements.push(
+          <Text key={`newline-${key++}`} style={styles.newline}>
+            {'\n'}
+          </Text>
+        );
       }
       
       // Handle headers
-      if (line.startsWith('#### ')) {
+      if (trimmedLine.startsWith('#### ')) {
         elements.push(
-          <Text key={key++} style={styles.h4}>
-            {parseInlineMarkdown(line.substring(5))}
+          <Text key={`h4-${key++}`} style={styles.h4}>
+            {parseInlineMarkdown(trimmedLine.substring(5))}
           </Text>
         );
-      } else if (line.startsWith('### ')) {
+      } else if (trimmedLine.startsWith('### ')) {
         elements.push(
-          <Text key={key++} style={styles.h3}>
-            {parseInlineMarkdown(line.substring(4))}
+          <Text key={`h3-${key++}`} style={styles.h3}>
+            {parseInlineMarkdown(trimmedLine.substring(4))}
           </Text>
         );
-      } else if (line.startsWith('## ')) {
+      } else if (trimmedLine.startsWith('## ')) {
         elements.push(
-          <Text key={key++} style={styles.h2}>
-            {parseInlineMarkdown(line.substring(3))}
+          <Text key={`h2-${key++}`} style={styles.h2}>
+            {parseInlineMarkdown(trimmedLine.substring(3))}
           </Text>
         );
-      } else if (line.startsWith('# ')) {
+      } else if (trimmedLine.startsWith('# ')) {
         elements.push(
-          <Text key={key++} style={styles.h1}>
-            {parseInlineMarkdown(line.substring(2))}
+          <Text key={`h1-${key++}`} style={styles.h1}>
+            {parseInlineMarkdown(trimmedLine.substring(2))}
           </Text>
         );
       }
       // Handle code blocks
-      else if (line.startsWith('```')) {
+      else if (trimmedLine.startsWith('```')) {
         const codeLines = [];
         i++; // Skip the opening ```
-        while (i < lines.length && !lines[i].startsWith('```')) {
+        while (i < lines.length && !lines[i].trim().startsWith('```')) {
           codeLines.push(lines[i]);
           i++;
         }
         elements.push(
-          <View key={key++} style={styles.codeBlock}>
+          <View key={`code-${key++}`} style={styles.codeBlock}>
             <Text style={styles.codeText}>
               {codeLines.join('\n')}
             </Text>
@@ -85,32 +108,32 @@ const MessageBubble = ({
         );
       }
       // Handle blockquotes
-      else if (line.startsWith('> ')) {
+      else if (trimmedLine.startsWith('> ')) {
         elements.push(
-          <View key={key++} style={styles.blockquote}>
+          <View key={`quote-${key++}`} style={styles.blockquote}>
             <Text style={styles.blockquoteText}>
-              {parseInlineMarkdown(line.substring(2))}
+              {parseInlineMarkdown(trimmedLine.substring(2))}
             </Text>
           </View>
         );
       }
-      // Handle bullet points
-      else if (line.startsWith('- ') || line.startsWith('* ') || line.startsWith('+ ')) {
+      // Handle bullet points with various prefixes
+      else if (trimmedLine.match(/^[\*\+\-]\s/)) {
         elements.push(
-          <View key={key++} style={styles.listItem}>
+          <View key={`bullet-${key++}`} style={styles.listItem}>
             <Text style={styles.bulletPoint}>•</Text>
             <Text style={styles.listText}>
-              {parseInlineMarkdown(line.substring(2))}
+              {parseInlineMarkdown(trimmedLine.substring(2))}
             </Text>
           </View>
         );
       }
       // Handle numbered lists
-      else if (/^\d+\.\s/.test(line)) {
-        const match = line.match(/^(\d+)\.\s(.*)$/);
+      else if (trimmedLine.match(/^\d+\.\s/)) {
+        const match = trimmedLine.match(/^(\d+)\.\s(.*)$/);
         if (match) {
           elements.push(
-            <View key={key++} style={styles.listItem}>
+            <View key={`numbered-${key++}`} style={styles.listItem}>
               <Text style={styles.bulletPoint}>{match[1]}.</Text>
               <Text style={styles.listText}>
                 {parseInlineMarkdown(match[2])}
@@ -119,19 +142,11 @@ const MessageBubble = ({
           );
         }
       }
-      // Handle regular paragraphs and empty lines
-      else if (line.trim() !== '') {
-        elements.push(
-          <Text key={key++} style={styles.paragraph}>
-            {parseInlineMarkdown(line)}
-          </Text>
-        );
-      }
-      // Handle empty lines - add a small space element
+      // Handle regular text
       else {
         elements.push(
-          <Text key={key++} style={styles.emptyLine}>
-            {' '}
+          <Text key={`text-${key++}`} style={styles.paragraph}>
+            {parseInlineMarkdown(trimmedLine)}
           </Text>
         );
       }
@@ -237,7 +252,7 @@ const MessageBubble = ({
       if (match.type === 'markdown_link' || match.type === 'plain_link') {
         elements.push(
           <Text
-            key={key++}
+            key={`link-${key++}`}
             style={match.style}
             onPress={() => handleLinkPress(match.url!)}
           >
@@ -246,7 +261,7 @@ const MessageBubble = ({
         );
       } else {
         elements.push(
-          <Text key={key++} style={[styles.normalText, match.style]}>
+          <Text key={`inline-${key++}`} style={[styles.normalText, match.style]}>
             {match.text}
           </Text>
         );
@@ -271,32 +286,42 @@ const MessageBubble = ({
     return elements;
   };
 
-  // Enhanced markdown detection
-  const hasMarkdown = /[*_`#\[\]!+{}-]/.test(message) || 
-                     message.includes('```') || 
-                     message.includes('> ') ||
-                     message.includes('#### ') ||
-                     /^\d+\.\s/m.test(message) ||
-                     /^[+*-]\s/m.test(message) ||
-                     /https?:\/\//.test(message) ||
-                     message.includes('\n') ||
-                     /\{.*?\}/.test(message) ||
-                     /\*\*.*?\*\*/.test(message);
+  // Enhanced markdown detection - check for actual markdown patterns
+  const hasMarkdown = (text: string) => {
+    // Check for literal \n in the text (escaped newlines)
+    if (text.includes('\\n')) {
+      return true;
+    }
+    
+    // Check for other markdown patterns
+    return /[*_`#\[\]!+{}-]/.test(text) || 
+           text.includes('```') || 
+           text.includes('> ') ||
+           /\\n###/.test(text) ||
+           /\\n\d+\./.test(text) ||
+           /\\n[\*\+\-]\s/.test(text) ||
+           /^\s*\d+\.\s/m.test(text) ||
+           /^\s*[+*-]\s/m.test(text) ||
+           /https?:\/\//.test(text) ||
+           text.includes('\n') ||
+           /\{.*?\}/.test(text) ||
+           /\*\*.*?\*\*/.test(text);
+  };
 
   // Render plain text with proper newline handling
   const renderPlainText = (text: string) => {
-    // Split by \n and create Text elements
-    const parts = text.split('\n');
+    // Split by \n and create proper line breaks
+    const lines = text.split('\n');
     
     return (
       <Text style={[
         styles.messageText,
         isUser ? styles.userText : styles.botText
       ]}>
-        {parts.map((part, index) => (
-          <React.Fragment key={index}>
-            {index > 0 && '\n'}
-            {part}
+        {lines.map((line, index) => (
+          <React.Fragment key={`plain-${index}`}>
+            {index > 0 && <Text>{'\n'}</Text>}
+            {line}
           </React.Fragment>
         ))}
       </Text>
@@ -312,12 +337,12 @@ const MessageBubble = ({
         styles.bubble,
         isUser ? styles.userBubble : styles.botBubble
       ]}>
-        {!isUser && hasMarkdown ? (
+        {!isUser && hasMarkdown(processedMessage) ? (
           <View style={styles.markdownContainer}>
-            {parseMarkdown(message)}
+            {parseMarkdown(processedMessage)}
           </View>
         ) : (
-          renderPlainText(message)
+          renderPlainText(processedMessage)
         )}
       </View>
       <Text style={[
@@ -392,8 +417,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
     color: '#253528',
-    marginBottom: 4,
     textAlign: 'justify',
+  },
+  newline: {
+    fontSize: 16,
+    lineHeight: 22,
+    color: '#253528',
   },
   emptyLine: {
     fontSize: 16,
