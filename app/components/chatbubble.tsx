@@ -27,31 +27,10 @@ const MessageBubble = ({
     }
   };
 
-  // Convert text with newlines to proper React Native format
-  const convertNewlinesToElements = (text: string): (string | JSX.Element)[] => {
-    if (!text.includes('\n')) {
-      return [text];
-    }
-
-    const parts = text.split('\n');
-    const result: (string | JSX.Element)[] = [];
-    
-    parts.forEach((part, index) => {
-      if (index > 0) {
-        // Add actual newline character for React Native
-        result.push(<Text key={`nl-${index}`}>{'\n'}</Text>);
-      }
-      // Always add the part, even if it's empty (to preserve empty lines)
-      result.push(part);
-    });
-    
-    return result;
-  };
-
   // Simple markdown parser for basic formatting
   const parseMarkdown = (text: string) => {
     const elements: JSX.Element[] = [];
-    // Split by actual newline characters first
+    // Split by newline characters and preserve them
     const lines = text.split('\n');
     let key = 0;
 
@@ -63,7 +42,7 @@ const MessageBubble = ({
         elements.push(<Text key={`lb-${key++}`}>{'\n'}</Text>);
       }
       
-      // Handle headers (including #### for h4)
+      // Handle headers
       if (line.startsWith('#### ')) {
         elements.push(
           <Text key={key++} style={styles.h4}>
@@ -115,7 +94,7 @@ const MessageBubble = ({
           </View>
         );
       }
-      // Handle bullet points (-, *, and + for unordered lists)
+      // Handle bullet points
       else if (line.startsWith('- ') || line.startsWith('* ') || line.startsWith('+ ')) {
         elements.push(
           <View key={key++} style={styles.listItem}>
@@ -141,18 +120,18 @@ const MessageBubble = ({
         }
       }
       // Handle regular paragraphs and empty lines
-      else if (line.trim()) {
+      else if (line.trim() !== '') {
         elements.push(
           <Text key={key++} style={styles.paragraph}>
             {parseInlineMarkdown(line)}
           </Text>
         );
       }
-      // Handle empty lines - add a text element with just a space to maintain structure
+      // Handle empty lines - add a small space element
       else {
         elements.push(
           <Text key={key++} style={styles.emptyLine}>
-            {'\u00A0'}
+            {' '}
           </Text>
         );
       }
@@ -161,259 +140,165 @@ const MessageBubble = ({
     return elements;
   };
 
-  // Parse inline markdown with proper link handling (both markdown links and plain URLs)
-  const parseInlineMarkdown = (text: string): JSX.Element => {
-    // Handle newlines in the text first
-    if (text.includes('\n')) {
-      const parts = convertNewlinesToElements(text);
-      const processedParts = parts.map((part, index) => {
-        if (typeof part === 'string') {
-          return parseInlineMarkdownSingleLine(part);
-        }
-        return part; // JSX newline element
-      });
-      return <Text>{processedParts}</Text>;
-    }
-    
-    return parseInlineMarkdownSingleLine(text);
-  };
-
-  // Parse inline markdown for a single line (no newlines)
-  const parseInlineMarkdownSingleLine = (text: string): JSX.Element => {
-    // Check for both markdown links and plain URLs
-    const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
-    const urlRegex = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
-    
-    const hasMarkdownLinks = markdownLinkRegex.test(text);
-    const hasPlainUrls = urlRegex.test(text);
-    
-    if (!hasMarkdownLinks && !hasPlainUrls) {
-      // No links, parse other markdown normally
-      return parseTextWithFormatting(text);
-    }
-
-    // Find all links (both types)
-    const allLinks: Array<{
-      start: number;
-      end: number;
-      text: string;
-      url: string;
-      type: 'markdown' | 'plain';
-    }> = [];
-
-    // Reset regex
-    markdownLinkRegex.lastIndex = 0;
-    urlRegex.lastIndex = 0;
-
-    // Find markdown links
-    let match;
-    while ((match = markdownLinkRegex.exec(text)) !== null) {
-      allLinks.push({
-        start: match.index,
-        end: match.index + match[0].length,
-        text: match[1],
-        url: match[2],
-        type: 'markdown'
-      });
-    }
-
-    // Find plain URLs
-    while ((match = urlRegex.exec(text)) !== null) {
-      const url = match[0];
-      // Check if this URL is already part of a markdown link
-      const isPartOfMarkdownLink = allLinks.some(link => 
-        link.type === 'markdown' && 
-        match.index >= link.start && 
-        match.index < link.end
-      );
-      
-      if (!isPartOfMarkdownLink) {
-        allLinks.push({
-          start: match.index,
-          end: match.index + match[0].length,
-          text: url,
-          url: url,
-          type: 'plain'
-        });
-      }
-    }
-
-    // Sort links by start position
-    allLinks.sort((a, b) => a.start - b.start);
-
-    // Parse text with links
-    const elements: JSX.Element[] = [];
-    let lastIndex = 0;
-    let key = 0;
-    
-    allLinks.forEach(link => {
-      // Add text before link
-      if (link.start > lastIndex) {
-        const beforeText = text.substring(lastIndex, link.start);
-        if (beforeText) {
-          elements.push(
-            <Text key={key++}>
-              {parseTextWithFormatting(beforeText)}
-            </Text>
-          );
-        }
-      }
-      
-      // Add clickable link
-      elements.push(
-        <Text
-          key={key++}
-          style={styles.link}
-          onPress={() => handleLinkPress(link.url)}
-        >
-          {link.text}
-        </Text>
-      );
-      
-      lastIndex = link.end;
-    });
-    
-    // Add remaining text
-    if (lastIndex < text.length) {
-      const remainingText = text.substring(lastIndex);
-      if (remainingText) {
-        elements.push(
-          <Text key={key++}>
-            {parseTextWithFormatting(remainingText)}
-          </Text>
-        );
-      }
-    }
-    
-    return <Text>{elements}</Text>;
-  };
-
-  // Parse text formatting (bold, italic, code, and { } blocks) without links or newlines
-  const parseTextWithFormatting = (text: string): JSX.Element => {
-    const elements: JSX.Element[] = [];
+  // Parse inline markdown (bold, italic, code, links, special blocks)
+  const parseInlineMarkdown = (text: string): (string | JSX.Element)[] => {
+    const elements: (string | JSX.Element)[] = [];
     let currentIndex = 0;
     let key = 0;
 
-    // Regex patterns for inline markdown (including { } for special formatting)
+    // Combined regex to find all inline markdown patterns
     const patterns = [
-      { regex: /\*\*((?:[^*]|\*(?!\*))+?)\*\*/g, style: styles.bold },   // **bold**
-      { regex: /\*([^*]+?)\*/g, style: styles.italic },                  // *italic*
-      { regex: /`([^`]+?)`/g, style: styles.inlineCode },                // `code`
-      { regex: /\{([^}]+?)\}/g, style: styles.specialBlock },            // {special formatting}
+      { regex: /\*\*((?:[^*]|\*(?!\*))+?)\*\*/g, style: styles.bold, type: 'bold' },
+      { regex: /\*([^*]+?)\*/g, style: styles.italic, type: 'italic' },
+      { regex: /`([^`]+?)`/g, style: styles.inlineCode, type: 'code' },
+      { regex: /\{([^}]+?)\}/g, style: styles.specialBlock, type: 'special' },
+      { regex: /\[([^\]]+)\]\(([^)]+)\)/g, style: styles.link, type: 'markdown_link' },
+      { regex: /https?:\/\/[^\s<>"{}|\\^`[\]]+/g, style: styles.link, type: 'plain_link' }
     ];
 
-    // Find all matches
+    // Find all matches with their positions
     const allMatches: Array<{
-      match: RegExpExecArray;
-      pattern: typeof patterns[0];
-      index: number;
+      start: number;
+      end: number;
+      text: string;
+      url?: string;
+      style: any;
+      type: string;
     }> = [];
 
     patterns.forEach(pattern => {
       let match;
       const regex = new RegExp(pattern.regex.source, pattern.regex.flags);
+      
       while ((match = regex.exec(text)) !== null) {
-        allMatches.push({
-          match,
-          pattern,
-          index: match.index
-        });
+        if (pattern.type === 'markdown_link') {
+          allMatches.push({
+            start: match.index,
+            end: match.index + match[0].length,
+            text: match[1],
+            url: match[2],
+            style: pattern.style,
+            type: pattern.type
+          });
+        } else if (pattern.type === 'plain_link') {
+          // Check if this URL is already part of a markdown link
+          const isPartOfMarkdownLink = allMatches.some(m => 
+            m.type === 'markdown_link' && 
+            match.index >= m.start && 
+            match.index < m.end
+          );
+          
+          if (!isPartOfMarkdownLink) {
+            allMatches.push({
+              start: match.index,
+              end: match.index + match[0].length,
+              text: match[0],
+              url: match[0],
+              style: pattern.style,
+              type: pattern.type
+            });
+          }
+        } else {
+          allMatches.push({
+            start: match.index,
+            end: match.index + match[0].length,
+            text: match[1],
+            style: pattern.style,
+            type: pattern.type
+          });
+        }
       }
     });
 
-    // Sort matches by index and handle overlapping matches
-    allMatches.sort((a, b) => a.index - b.index);
-
-    // Remove overlapping matches (keep the first one)
+    // Sort matches by start position and remove overlaps
+    allMatches.sort((a, b) => a.start - b.start);
+    
     const filteredMatches = [];
     let lastEnd = 0;
     
-    for (const matchObj of allMatches) {
-      if (matchObj.match.index >= lastEnd) {
-        filteredMatches.push(matchObj);
-        lastEnd = matchObj.match.index + matchObj.match[0].length;
+    for (const match of allMatches) {
+      if (match.start >= lastEnd) {
+        filteredMatches.push(match);
+        lastEnd = match.end;
       }
     }
 
-    // Process matches
-    filteredMatches.forEach(({ match, pattern }) => {
+    // Build the final elements array
+    filteredMatches.forEach(match => {
       // Add text before this match
-      if (match.index > currentIndex) {
-        const beforeText = text.substring(currentIndex, match.index);
+      if (match.start > currentIndex) {
+        const beforeText = text.substring(currentIndex, match.start);
         if (beforeText) {
-          elements.push(
-            <Text key={key++} style={styles.normalText}>
-              {beforeText}
-            </Text>
-          );
+          elements.push(beforeText);
         }
       }
 
-      // Handle the match
-      elements.push(
-        <Text key={key++} style={[styles.normalText, pattern.style]}>
-          {match[1]}
-        </Text>
-      );
+      // Add the formatted element
+      if (match.type === 'markdown_link' || match.type === 'plain_link') {
+        elements.push(
+          <Text
+            key={key++}
+            style={match.style}
+            onPress={() => handleLinkPress(match.url!)}
+          >
+            {match.text}
+          </Text>
+        );
+      } else {
+        elements.push(
+          <Text key={key++} style={[styles.normalText, match.style]}>
+            {match.text}
+          </Text>
+        );
+      }
 
-      currentIndex = match.index + match[0].length;
+      currentIndex = match.end;
     });
 
     // Add remaining text
     if (currentIndex < text.length) {
       const remainingText = text.substring(currentIndex);
       if (remainingText) {
-        elements.push(
-          <Text key={key++} style={styles.normalText}>
-            {remainingText}
-          </Text>
-        );
+        elements.push(remainingText);
       }
     }
 
     // If no matches found, return the original text
     if (elements.length === 0) {
-      return (
-        <Text style={styles.normalText}>
-          {text}
-        </Text>
-      );
+      elements.push(text);
     }
 
-    return <Text>{elements}</Text>;
+    return elements;
   };
 
-  // Enhanced markdown detection including new elements
+  // Enhanced markdown detection
   const hasMarkdown = /[*_`#\[\]!+{}-]/.test(message) || 
                      message.includes('```') || 
                      message.includes('> ') ||
                      message.includes('#### ') ||
-                     /^\d+\.\s/.test(message) ||
-                     /^[+*-]\s/.test(message) ||
+                     /^\d+\.\s/m.test(message) ||
+                     /^[+*-]\s/m.test(message) ||
                      /https?:\/\//.test(message) ||
                      message.includes('\n') ||
                      /\{.*?\}/.test(message) ||
-                     /\*\*.*?\*\*/.test(message) ||
-                     message.split('\n').length > 1;
+                     /\*\*.*?\*\*/.test(message);
 
-  // Helper function to properly render plain text with newlines
-  const renderPlainTextWithNewlines = (text: string) => {
-    const elements = convertNewlinesToElements(text);
+  // Render plain text with proper newline handling
+  const renderPlainText = (text: string) => {
+    // Split by \n and create Text elements
+    const parts = text.split('\n');
+    
     return (
-      <Text>
-        {elements.map((element, index) => {
-          if (typeof element === 'string') {
-            return (
-              <Text key={index} style={[
-                styles.messageText,
-                isUser ? styles.userText : styles.botText
-              ]}>
-                {element}
-              </Text>
-            );
-          }
-          return element;
-        })}
+      <Text style={[
+        styles.messageText,
+        isUser ? styles.userText : styles.botText
+      ]}>
+        {parts.map((part, index) => (
+          <React.Fragment key={index}>
+            {index > 0 && '\n'}
+            {part}
+          </React.Fragment>
+        ))}
       </Text>
     );
   };
@@ -432,7 +317,7 @@ const MessageBubble = ({
             {parseMarkdown(message)}
           </View>
         ) : (
-          renderPlainTextWithNewlines(message)
+          renderPlainText(message)
         )}
       </View>
       <Text style={[
@@ -622,9 +507,6 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
     fontSize: 16,
     lineHeight: 22,
-  },
-  lineBreak: {
-    height: 8,
   },
 });
 
