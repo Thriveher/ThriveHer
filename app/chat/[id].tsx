@@ -15,8 +15,6 @@ import {
   Pressable,
   Linking,
   Image,
-  Animated,
-  Vibration,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons, Feather } from '@expo/vector-icons';
@@ -27,8 +25,12 @@ import { StatusBar } from 'expo-status-bar';
 import * as Google from 'expo-auth-session/providers/google';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import JobDetailCard from '../components/JobCard';
-import ResumeCard from '../components/ResumeCard';
-import VoiceService, { VoiceServiceError, TranscriptionResult, ChatResponse } from '@/app/api/voiceService';
+import ResumeCard from '../components/ResumeCard'; 
+import CommunityCard from '../components/CommunityCard';
+import JobPortalsCard from '../components/JobPortalCard';
+import CourseCard from '../components/CourseCard';
+import VoiceRecordingOverlay from '../components/Voice'
+
 
 // Hardcoded Supabase credentials
 const SUPABASE_URL = 'https://ibwjjwzomoyhkxugmmmw.supabase.co';
@@ -43,25 +45,23 @@ export interface Message {
   timestamp: string;
   isJobSearch?: boolean;
   jobData?: any[];
-  isVoiceMessage?: boolean;
 }
 
+// Command suggestions interface
 interface CommandSuggestion {
   command: string;
   description: string;
 }
 
+// Define the correct interface for Groq request
 interface GroqRequestParams {
   message: string;
   chatId: string;
   chatName: string;
   context: string;
   userId: string;
-}
+} 
 
-const COMMANDS: CommandSuggestion[] = [
-  { command: '/job', description: 'Search for jobs' },
-];
 
 const ChatScreen = () => {
   const { id: chatId } = useLocalSearchParams<{ id: string }>();
@@ -73,34 +73,18 @@ const ChatScreen = () => {
   const [sending, setSending] = useState<boolean>(false);
   const [inputText, setInputText] = useState<string>('');
   const [context, setContext] = useState<string>('');
-  const [showCommands, setShowCommands] = useState<boolean>(false);
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
-  const [jobDetailsModalVisible, setJobDetailsModalVisible] = useState<boolean>(false);
-  const [selectedJobDetails, setSelectedJobDetails] = useState<any>(null);
   const [userId, setUserId] = useState<string>(FALLBACK_USER_ID);
+  const [isVoiceOverlayOpen, setIsVoiceOverlayOpen] = useState<boolean>(false);
   
-  // Voice recording states
-  const [isRecording, setIsRecording] = useState<boolean>(false);
-  const [isTranscribingAndProcessing, setIsTranscribingAndProcessing] = useState<boolean>(false);
-  const [recordingDuration, setRecordingDuration] = useState<number>(0);
-  const [showVoiceModal, setShowVoiceModal] = useState<boolean>(false);
-  const [voiceProcessingStep, setVoiceProcessingStep] = useState<string>('');
-  
-  // Animation values
-  const recordingAnimation = useRef(new Animated.Value(1)).current;
-  const pulseAnimation = useRef(new Animated.Value(1)).current;
+  // Scroll management state
+  const [isUserScrolling, setIsUserScrolling] = useState<boolean>(false);
+  const [isNearBottom, setIsNearBottom] = useState<boolean>(true);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState<boolean>(true);
+  const [isInitialLoad, setIsInitialLoad] = useState<boolean>(true);
   
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
-  const recordingTimer = useRef<NodeJS.Timeout | null>(null);
-
-  // Initialize voice service configuration
-  useEffect(() => {
-    VoiceService.updateConfig({
-      language: 'en',
-      cleanupAfterTranscription: true,
-    });
-  }, []);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Get Google user ID from session
   useEffect(() => {
@@ -130,105 +114,119 @@ const ChatScreen = () => {
     }
   }, [chatId]);
 
-  useEffect(() => {
-    if (inputText === '/') {
-      setShowCommands(true);
-    } else if (inputText.length > 0 && !inputText.startsWith('/')) {
-      setShowCommands(false);
-    }
-  }, [inputText]);
-
-  // Recording animation effect
-  useEffect(() => {
-    if (isRecording) {
-      const startPulseAnimation = () => {
-        Animated.loop(
-          Animated.sequence([
-            Animated.timing(pulseAnimation, {
-              toValue: 1.3,
-              duration: 800,
-              useNativeDriver: true,
-            }),
-            Animated.timing(pulseAnimation, {
-              toValue: 1,
-              duration: 800,
-              useNativeDriver: true,
-            }),
-          ])
-        ).start();
-      };
-
-      startPulseAnimation();
-
-      recordingTimer.current = setInterval(() => {
-        setRecordingDuration(prev => prev + 1);
-      }, 1000);
-    } else {
-      pulseAnimation.stopAnimation();
-      pulseAnimation.setValue(1);
-      if (recordingTimer.current) {
-        clearInterval(recordingTimer.current);
-        recordingTimer.current = null;
-      }
-      setRecordingDuration(0);
-    }
-
-    return () => {
-      if (recordingTimer.current) {
-        clearInterval(recordingTimer.current);
-      }
-    };
-  }, [isRecording]);
-
   const loadChatMessages = async () => {
     try {
       setLoading(true);
       const { messages: chatMessages, context: chatContext } = await fetchChatMessages(chatId);
       
-      const processedMessages = chatMessages.map(msg => {
-        if (msg.is_user_message && msg.content.toLowerCase().startsWith('/job ')) {
-          return { ...msg, isJobSearch: true };
-        }
-        return msg;
-      });
-      
-      setMessages(processedMessages);
+      setMessages(chatMessages);
       setContext(chatContext || '');
+      
+      // Mark that we should auto-scroll after initial load
+      setShouldAutoScroll(true);
+      setIsInitialLoad(true);
     } catch (error) {
       console.error('Failed to load chat messages:', error);
-      Alert.alert('Error', 'Failed to load messages. Please try again later.');
+      Alert.alert(
+        'Error',
+        'Failed to load messages. Please try again later.'
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSendMessage = async (messageText?: string, isVoice: boolean = false) => {
-    const textToSend = messageText || inputText.trim();
-    if (!textToSend || !chatId) return;
+  // Handle scroll events to detect user scrolling
+  const handleScroll = (event) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const isAtBottom = contentOffset.y + layoutMeasurement.height >= contentSize.height - 50;
     
-    setInputText('');
-    setShowCommands(false);
+    setIsNearBottom(isAtBottom);
     
-    const isJobSearch = textToSend.toLowerCase().startsWith('/job ') || textToSend.toLowerCase() === '/job';
+    // If user scrolls up and we're not at bottom, disable auto-scroll
+    if (!isAtBottom && !isInitialLoad) {
+      setIsUserScrolling(true);
+      setShouldAutoScroll(false);
+    }
     
+    // If user scrolls back to bottom, re-enable auto-scroll
+    if (isAtBottom && isUserScrolling) {
+      setShouldAutoScroll(true);
+      setIsUserScrolling(false);
+    }
+  };
+
+  // Handle when user starts scrolling
+  const handleScrollBeginDrag = () => {
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+    setIsUserScrolling(true);
+    setIsInitialLoad(false);
+  };
+
+  // Handle when user stops scrolling
+  const handleScrollEndDrag = () => {
+    // Set a timeout to detect when user has stopped interacting
+    scrollTimeoutRef.current = setTimeout(() => {
+      setIsUserScrolling(false);
+    }, 1000);
+  };
+
+  // Smart scroll function that only scrolls when appropriate
+  const scrollToBottomIfNeeded = () => {
+    if (flatListRef.current && (shouldAutoScroll || isInitialLoad)) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: !isInitialLoad });
+        if (isInitialLoad) {
+          setIsInitialLoad(false);
+        }
+      }, 100);
+    }
+  };
+
+  // Handle content size change (when new messages are added)
+  const handleContentSizeChange = () => {
+    scrollToBottomIfNeeded();
+  };
+
+  // Handle layout change (when component is first rendered)
+  const handleLayout = () => {
+    if (isInitialLoad) {
+      scrollToBottomIfNeeded();
+    }
+  };
+
+  const handleSendMessage = async (messageText?: string) => {
+    const messageToSend = messageText || inputText.trim();
+    if (!messageToSend || !chatId) return;
+    
+    // Only clear input if using typed text (not voice)
+    if (!messageText) {
+      setInputText('');
+    }
+    
+    // Re-enable auto-scroll when user sends a message
+    setShouldAutoScroll(true);
+    setIsUserScrolling(false);
+    
+    // Optimistically add user message to the UI
     const tempUserMessageId = `temp-${Date.now()}`;
     const newUserMessage: Message = {
       id: tempUserMessageId,
-      content: textToSend,
+      content: messageToSend,
       is_user_message: true,
       timestamp: new Date().toISOString(),
-      isJobSearch: isJobSearch,
-      isVoiceMessage: isVoice,
     };
     
     setMessages(prevMessages => [...prevMessages, newUserMessage]);
-    scrollToBottom();
     
+    // Show typing indicator
     setSending(true);
     
     try {
       const groqResponse = await processWithGroq({
-        message: textToSend,
+        message: messageToSend,
         chatId,
         chatName: decodeURIComponent(chatName),
         context,
@@ -237,46 +235,18 @@ const ChatScreen = () => {
       
       const { botResponse, updatedContext } = groqResponse;
       
-      await sendMessage(chatId, textToSend, botResponse, updatedContext);
-      
-      let jobData: any[] | undefined = undefined;
-      if (isJobSearch) {
-        try {
-          const jobMatches = botResponse.match(/\d+\.\s(.*?)\sat\s(.*?)\n\s*Location:\s(.*?)\n\s*Salary:\s(.*?)\n/g);
-          
-          if (jobMatches && jobMatches.length > 0) {
-            jobData = jobMatches.map(match => {
-              const titleMatch = match.match(/\d+\.\s(.*?)\sat\s(.*?)\n/);
-              const locationMatch = match.match(/Location:\s(.*?)\n/);
-              const salaryMatch = match.match(/Salary:\s(.*?)\n/);
-              const linkMatch = match.match(/Apply:\s(.*?)(\n|$)/);
-              
-              const rawSalary = salaryMatch ? salaryMatch[1] : 'Not specified';
-              const salary = rawSalary.replace(/\$/g, '₹');
-              
-              return {
-                title: titleMatch ? titleMatch[1] : 'Unknown position',
-                company: titleMatch ? titleMatch[2] : 'Unknown company',
-                location: locationMatch ? locationMatch[1] : 'Unknown location',
-                salary: salary,
-                applyLink: linkMatch ? linkMatch[1].trim() : '#',
-                id: `job-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-                logoUrl: `https://logo.clearbit.com/${titleMatch ? titleMatch[2].toLowerCase().replace(/\s+/g, '') : 'company'}.com`,
-              };
-            });
-          }
-        } catch (parseError) {
-          console.error("Error parsing job data:", parseError);
-        }
-      }
+      await sendMessage(
+        chatId, 
+        messageToSend, 
+        botResponse, 
+        updatedContext
+      );
       
       const botMessage: Message = {
         id: `bot-${Date.now()}`,
         content: botResponse,
         is_user_message: false,
         timestamp: new Date().toISOString(),
-        jobData: jobData,
-        isJobSearch: isJobSearch
       };
       
       setMessages(prevMessages => [
@@ -288,206 +258,20 @@ const ChatScreen = () => {
       setContext(updatedContext);
     } catch (error) {
       console.error('Error sending message:', error);
-      Alert.alert('Error', 'Failed to send message. Please try again.');
+      Alert.alert(
+        'Error',
+        'Failed to send message. Please try again.'
+      );
       setMessages(prevMessages => 
         prevMessages.filter(msg => msg.id !== tempUserMessageId)
       );
     } finally {
       setSending(false);
-      scrollToBottom();
     }
   };
 
-  // Enhanced voice recording with automatic Groq processing
-  const startVoiceRecording = async () => {
-    try {
-      setShowVoiceModal(true);
-      setIsRecording(true);
-      setVoiceProcessingStep('Recording...');
-      
-      // Haptic feedback
-      if (Platform.OS === 'ios') {
-        Vibration.vibrate([0, 50]);
-      } else {
-        Vibration.vibrate(50);
-      }
-      
-      const result = await VoiceService.startRecording();
-      console.log('Recording started:', result);
-    } catch (error: any) {
-      console.error('Recording start error:', error);
-      setIsRecording(false);
-      setShowVoiceModal(false);
-      
-      const voiceError = error as VoiceServiceError;
-      const errorMessage = VoiceService.getErrorMessage(voiceError);
-      Alert.alert('Recording Error', errorMessage);
-    }
-  };
-
-  const stopVoiceRecordingAndProcess = async () => {
-    try {
-      setIsRecording(false);
-      setIsTranscribingAndProcessing(true);
-      setVoiceProcessingStep('Transcribing audio...');
-      
-      // Stop recording and get the audio file
-      const recordingResult = await VoiceService.stopRecording();
-      console.log('Recording stopped:', recordingResult);
-      
-      // Transcribe the audio
-      const transcriptionResult = await VoiceService.transcribeAudio(recordingResult.uri);
-      console.log('Transcription result:', transcriptionResult);
-      
-      if (!transcriptionResult.text.trim()) {
-        setIsTranscribingAndProcessing(false);
-        setShowVoiceModal(false);
-        Alert.alert('No Speech Detected', 'Please try recording again and speak clearly.');
-        return;
-      }
-
-      // Update processing step
-      setVoiceProcessingStep('Processing with AI...');
-      
-      // Create temporary user message to show immediately
-      const tempUserMessageId = `temp-voice-${Date.now()}`;
-      const transcribedText = transcriptionResult.text.trim();
-      const isJobSearch = transcribedText.toLowerCase().includes('job') || 
-                         transcribedText.toLowerCase().includes('career') ||
-                         transcribedText.toLowerCase().startsWith('/job');
-      
-      const newUserMessage: Message = {
-        id: tempUserMessageId,
-        content: transcribedText,
-        is_user_message: true,
-        timestamp: new Date().toISOString(),
-        isJobSearch: isJobSearch,
-        isVoiceMessage: true,
-      };
-      
-      // Close modal and show transcribed message
-      setIsTranscribingAndProcessing(false);
-      setShowVoiceModal(false);
-      
-      // Add user message immediately
-      setMessages(prevMessages => [...prevMessages, newUserMessage]);
-      scrollToBottom();
-      
-      // Process with Groq
-      setSending(true);
-      
-      try {
-        const groqResponse = await processWithGroq({
-          message: transcribedText,
-          chatId,
-          chatName: decodeURIComponent(chatName),
-          context,
-          userId
-        });
-        
-        const { botResponse, updatedContext } = groqResponse;
-        
-        // Save to database
-        await sendMessage(chatId, transcribedText, botResponse, updatedContext);
-        
-        // Parse job data if needed
-        let jobData: any[] | undefined = undefined;
-        if (isJobSearch) {
-          try {
-            const jobMatches = botResponse.match(/\d+\.\s(.*?)\sat\s(.*?)\n\s*Location:\s(.*?)\n\s*Salary:\s(.*?)\n/g);
-            
-            if (jobMatches && jobMatches.length > 0) {
-              jobData = jobMatches.map(match => {
-                const titleMatch = match.match(/\d+\.\s(.*?)\sat\s(.*?)\n/);
-                const locationMatch = match.match(/Location:\s(.*?)\n/);
-                const salaryMatch = match.match(/Salary:\s(.*?)\n/);
-                const linkMatch = match.match(/Apply:\s(.*?)(\n|$)/);
-                
-                const rawSalary = salaryMatch ? salaryMatch[1] : 'Not specified';
-                const salary = rawSalary.replace(/\$/g, '₹');
-                
-                return {
-                  title: titleMatch ? titleMatch[1] : 'Unknown position',
-                  company: titleMatch ? titleMatch[2] : 'Unknown company',
-                  location: locationMatch ? locationMatch[1] : 'Unknown location',
-                  salary: salary,
-                  applyLink: linkMatch ? linkMatch[1].trim() : '#',
-                  id: `job-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-                  logoUrl: `https://logo.clearbit.com/${titleMatch ? titleMatch[2].toLowerCase().replace(/\s+/g, '') : 'company'}.com`,
-                };
-              });
-            }
-          } catch (parseError) {
-            console.error("Error parsing job data:", parseError);
-          }
-        }
-        
-        // Create bot response message
-        const botMessage: Message = {
-          id: `bot-voice-${Date.now()}`,
-          content: botResponse,
-          is_user_message: false,
-          timestamp: new Date().toISOString(),
-          jobData: jobData,
-          isJobSearch: isJobSearch
-        };
-        
-        // Update messages with both user and bot messages
-        setMessages(prevMessages => [
-          ...prevMessages.filter(msg => msg.id !== tempUserMessageId),
-          newUserMessage,
-          botMessage
-        ]);
-        
-        setContext(updatedContext);
-        
-      } catch (groqError) {
-        console.error('Error processing with Groq:', groqError);
-        Alert.alert('Processing Error', 'Failed to process your voice message. Please try again.');
-        
-        // Remove the temporary user message on error
-        setMessages(prevMessages => 
-          prevMessages.filter(msg => msg.id !== tempUserMessageId)
-        );
-      } finally {
-        setSending(false);
-        scrollToBottom();
-      }
-      
-    } catch (error: any) {
-      console.error('Voice processing error:', error);
-      setIsRecording(false);
-      setIsTranscribingAndProcessing(false);
-      setShowVoiceModal(false);
-      
-      const voiceError = error as VoiceServiceError;
-      const errorMessage = VoiceService.getErrorMessage(voiceError);
-      Alert.alert('Voice Processing Error', errorMessage);
-    }
-  };
-
-  const cancelVoiceRecording = async () => {
-    try {
-      await VoiceService.cancelRecording();
-    } catch (error) {
-      console.warn('Error canceling recording:', error);
-    } finally {
-      setIsRecording(false);
-      setIsTranscribingAndProcessing(false);
-      setShowVoiceModal(false);
-      setVoiceProcessingStep('');
-    }
-  };
-
-  const handleVoiceButtonPress = () => {
-    if (isRecording) {
-      stopVoiceRecordingAndProcess();
-    } else {
-      startVoiceRecording();
-    }
-  };
-
-  const handleKeyPress = (e: any) => {
+  // Handle key press for Enter key to send message
+  const handleKeyPress = (e) => {
     if (e.nativeEvent.key === 'Enter' && !e.nativeEvent.shiftKey) {
       e.preventDefault();
       if (inputText.trim() && !sending) {
@@ -496,176 +280,47 @@ const ChatScreen = () => {
     }
   };
 
-  const handleCommandSelect = (command: string) => {
-    setInputText(command + ' ');
-    setShowCommands(false);
-    inputRef.current?.focus();
+  const handleOpenVoiceRecording = () => {
+    setIsVoiceOverlayOpen(true);
   };
 
-  const scrollToBottom = () => {
-    if (flatListRef.current && messages.length > 0) {
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+  const handleTranscriptionComplete = (transcribedText: string) => {
+    setIsVoiceOverlayOpen(false);
+    
+    if (transcribedText.trim()) {
+      handleSendMessage(transcribedText.trim());
     }
   };
 
-  const handleJobCardPress = (jobId: string) => {
-    setSelectedJobId(jobId);
-    const allJobs = messages
-      .filter(msg => msg.jobData)
-      .flatMap(msg => msg.jobData || []);
-    
-    const jobDetails = allJobs.find(job => job.id === jobId);
-    if (jobDetails) {
-      setSelectedJobDetails(jobDetails);
-      setJobDetailsModalVisible(true);
+  // Scroll to bottom button handler
+  const handleScrollToBottom = () => {
+    setShouldAutoScroll(true);
+    setIsUserScrolling(false);
+    if (flatListRef.current) {
+      flatListRef.current.scrollToEnd({ animated: true });
     }
-  };
-
-  const openJobApplication = (url: string) => {
-    if (!url || url === '#') {
-      Alert.alert('Info', 'Application link is not available');
-      return;
-    }
-    
-    const formattedUrl = url.startsWith('http') ? url : `https://${url}`;
-    
-    Linking.canOpenURL(formattedUrl)
-      .then(supported => {
-        if (supported) {
-          return Linking.openURL(formattedUrl);
-        } else {
-          Alert.alert('Error', `Cannot open URL: ${formattedUrl}`);
-        }
-      })
-      .catch(err => {
-        console.error('Error opening URL:', err);
-        Alert.alert('Error', 'Could not open the application link');
-      });
-  };
-
-  const formatRecordingTime = (seconds: number): string => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  };
-
-  const renderCompanyLogo = (logoUrl: string) => {
-    return (
-      <View style={styles.container}>
-        <Image
-          source={{ uri: logoUrl }}
-          style={styles.companyLogo}
-          defaultSource={require('../../assets/images/placeholder-logo.jpeg')}
-          onError={(e) => console.log('Error loading logo', e.nativeEvent.error)}
-        />
-      </View>
-    );
-  };
-
-  const renderJobCard = (job: any) => (
-    <TouchableOpacity 
-      style={styles.jobCard}
-      onPress={() => handleJobCardPress(job.id)}
-      key={job.id}
-    >
-      <View style={styles.jobCardHeader}>
-        {renderCompanyLogo(job.logoUrl)}
-        <View style={styles.modalTitleContainer}>
-          <Text style={styles.jobTitle} numberOfLines={1}>{job.title}</Text>
-          <Text style={styles.jobCompany} numberOfLines={1}>{job.company}</Text>
-        </View>
-      </View>
-      <View style={styles.jobCardDetails}>
-        <View style={styles.jobCard}>
-          <Feather name="map-pin" size={14} color="#49654E" />
-          <Text style={styles.jobLocation} numberOfLines={1}>{job.location}</Text>
-        </View>
-        <View style={styles.jobCard}>
-          <Feather name="dollar-sign" size={14} color="#49654E" />
-          <Text style={styles.jobSalary} numberOfLines={1}>{job.salary}</Text>
-        </View>
-      </View>
-      <TouchableOpacity 
-        style={styles.jobApplyButton}
-        onPress={() => openJobApplication(job.applyLink)}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.jobApplyText}>Apply Now</Text>
-      </TouchableOpacity>
-    </TouchableOpacity>
-  );
-
-  const renderJobCards = (jobData: any[]) => (
-    <View style={styles.noJobsContainer}>
-      <Text style={styles.jobResultsTitle}>Job Search Results</Text>
-      {jobData.map(job => renderJobCard(job))}
-    </View>
-  );
-
-  const ResumeCardComponent = ({ message }: { message: string }) => {
-    const resumeMatch = message.match(/\/resume\s*:\s*(https?:\/\/[^\s]+)/i);
-    
-    if (!resumeMatch) return null;
-    
-    const resumeUrl = resumeMatch[1];
-    
-    const openResume = () => {
-      Linking.canOpenURL(resumeUrl)
-        .then(supported => {
-          if (supported) {
-            return Linking.openURL(resumeUrl);
-          } else {
-            Alert.alert('Error', 'Cannot open resume URL');
-          }
-        })
-        .catch(err => {
-          console.error('Error opening resume:', err);
-          Alert.alert('Error', 'Could not open the resume');
-        });
-    };
-
-    return (
-      <View style={styles.resumeCard}>
-        <View style={styles.resumeCardHeader}>
-          <View style={styles.resumeIconContainer}>
-            <Feather name="file-text" size={24} color="#49654E" />
-          </View>
-          <View style={styles.resumeTextContainer}>
-            <Text style={styles.resumeSubtitle}>Resume Document</Text>
-            <Text style={styles.resumeSubtitle}>Click to view or download</Text>
-          </View>
-        </View>
-        <TouchableOpacity 
-          style={styles.resumeViewText}
-          onPress={openResume}
-          activeOpacity={0.7}
-        >
-          <Feather name="external-link" size={16} color="#FFFFFF" />
-          <Text style={styles.resumeViewText}>View Resume</Text>
-        </TouchableOpacity>
-      </View>
-    );
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
+    // Check if the message contains various commands
     if (!item.is_user_message && item.content.toLowerCase().includes('/jobdata')) {
       return <JobDetailCard message={item.content} />;
     }
     
-    if (item.content.toLowerCase().includes('/resume')) {
-      return <ResumeCardComponent message={item.content} />;
+    if (!item.is_user_message && item.content.toLowerCase().includes('/resume')) {
+      return <ResumeCard message={item.content} />;
     }
     
-    if (item.isJobSearch && !item.is_user_message) {
-      return item.jobData && item.jobData.length > 0 ? (
-        renderJobCards(item.jobData)
-      ) : (
-        <View style={styles.noJobsContainer}>
-          <Text style={styles.noJobsText}>No job results found</Text>
-        </View>
-      );
+    if (!item.is_user_message && item.content.toLowerCase().includes('/community')) {
+      return <CommunityCard message={item.content} />;
+    }
+    
+    if (!item.is_user_message && item.content.toLowerCase().includes('/jobportals')) {
+      return <JobPortalsCard message={item.content} />;
+    }
+    
+    if (!item.is_user_message && item.content.toLowerCase().includes('/course')) {
+      return <CourseCard message={item.content} />;
     }
     
     return (
@@ -679,19 +334,18 @@ const ChatScreen = () => {
     );
   };
 
-  const renderCommandSuggestion = ({ item }: { item: CommandSuggestion }) => (
-    <TouchableOpacity 
-      style={styles.commandText} 
-      onPress={() => handleCommandSelect(item.command)}
-    >
-      <Text style={styles.commandText}>{item.command}</Text>
-      <Text style={styles.commandDescription}>{item.description}</Text>
-    </TouchableOpacity>
-  );
-
   const handleBackPress = () => {
     router.push('/chat');
   };
+
+  // Clean up timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, []);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -717,25 +371,35 @@ const ChatScreen = () => {
             <ActivityIndicator size="large" color="#49654E" />
           </View>
         ) : (
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            renderItem={renderMessage}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.messageList}
-            onContentSizeChange={scrollToBottom}
-            onLayout={scrollToBottom}
-          />
-        )}
-
-        {showCommands && (
-          <View style={styles.commandsContainer}>
+          <View style={styles.chatContainer}>
             <FlatList
-              data={COMMANDS}
-              renderItem={renderCommandSuggestion}
-              keyExtractor={(item) => item.command}
-              style={styles.commandsList}
+              ref={flatListRef}
+              data={messages}
+              renderItem={renderMessage}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.messageList}
+              onContentSizeChange={handleContentSizeChange}
+              onLayout={handleLayout}
+              onScroll={handleScroll}
+              onScrollBeginDrag={handleScrollBeginDrag}
+              onScrollEndDrag={handleScrollEndDrag}
+              scrollEventThrottle={16}
+              maintainVisibleContentPosition={{
+                minIndexForVisible: 0,
+                autoscrollToTopThreshold: 10,
+              }}
             />
+            
+            {/* Scroll to bottom button - only show when user has scrolled up */}
+            {!isNearBottom && !isInitialLoad && (
+              <TouchableOpacity 
+                style={styles.scrollToBottomButton}
+                onPress={handleScrollToBottom}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons name="keyboard-arrow-down" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
@@ -752,183 +416,40 @@ const ChatScreen = () => {
             maxLength={2000}
           />
           
-          {/* Voice recording button */}
-          <TouchableOpacity 
-            style={[
-              styles.voiceButton,
-              isRecording && styles.voiceButtonRecording
-            ]}
-            onPress={handleVoiceButtonPress}
-            activeOpacity={0.7}
-            disabled={isTranscribingAndProcessing || sending}
-          >
-            <Animated.View style={{ transform: [{ scale: isRecording ? pulseAnimation : 1 }] }}>
-              {isTranscribingAndProcessing ? (
+          {inputText.trim() ? (
+            <TouchableOpacity 
+              style={[
+                styles.sendButton,
+                sending && styles.sendButtonDisabled
+              ]}
+              onPress={() => handleSendMessage()}
+              disabled={sending}
+              activeOpacity={0.7}
+            >
+              {sending ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <MaterialIcons 
-                  name={isRecording ? "stop" : "mic"} 
-                  size={20} 
-                  color="#FFFFFF" 
-                />
+                <MaterialIcons name="send" size={20} color="#FFFFFF" />
               )}
-            </Animated.View>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[
-              styles.sendButton,
-              (!inputText.trim() || sending) && styles.sendButtonDisabled
-            ]}
-            onPress={() => handleSendMessage()}
-            disabled={!inputText.trim() || sending}
-            activeOpacity={0.7}
-          >
-            {sending ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <MaterialIcons name="send" size={20} color="#FFFFFF" />
-            )}
-          </TouchableOpacity>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity 
+              style={styles.voiceButton}
+              onPress={handleOpenVoiceRecording}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons name="mic" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          )}
         </View>
+
+        {/* Voice Recording Overlay */}
+        <VoiceRecordingOverlay
+          isOpen={isVoiceOverlayOpen}
+          onClose={() => setIsVoiceOverlayOpen(false)}
+          onTranscriptionComplete={handleTranscriptionComplete}
+        />
       </KeyboardAvoidingView>
-
-      {/* Enhanced Voice Recording Modal */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={showVoiceModal}
-        onRequestClose={cancelVoiceRecording}
-      >
-        <View style={styles.voiceModalOverlay}>
-          <View style={styles.voiceModalContent}>
-            {isTranscribingAndProcessing ? (
-              <>
-                <View style={styles.processingHint}>
-                  <ActivityIndicator size="large" color="#49654E" />
-                </View>
-                <Text style={styles.voiceModalTitle}>Processing Voice...</Text>
-                <Text style={styles.voiceModalSubtitle}>{voiceProcessingStep}</Text>
-                <Text style={styles.processingHint}>
-                  Converting speech to text and getting AI response
-                </Text>
-              </>
-            ) : (
-              <>
-                <Animated.View 
-                  style={[
-                    styles.recordingIndicator,
-                    { transform: [{ scale: pulseAnimation }] }
-                  ]}
-                >
-                  <MaterialIcons name="mic" size={40} color="#FFFFFF" />
-                </Animated.View>
-                
-                <Text style={styles.voiceModalTitle}>
-                  {isRecording ? 'Recording...' : 'Ready to Record'}
-                </Text>
-                
-                {isRecording && (
-                  <Text style={styles.recordingTimer}>
-                    {formatRecordingTime(recordingDuration)}
-                  </Text>
-                )}
-                
-               <Text style={styles.voiceModalSubtitle}>
-  {isRecording ? 'Tap stop to send to AI' : 'Tap to start recording'}
-</Text>
-                
-                <View style={styles.voiceModalButtons}>
-                  <TouchableOpacity 
-                    style={styles.cancelButton}
-                    onPress={cancelVoiceRecording}
-                  >
-                    <Text style={styles.cancelButtonText}>Cancel</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={[
-                      styles.recordButton,
-                      isRecording && styles.stopButton
-                    ]}
-                    onPress={handleVoiceButtonPress}
-                  >
-                    <MaterialIcons 
-                      name={isRecording ? "stop" : "mic"} 
-                      size={24} 
-                      color="#FFFFFF" 
-                    />
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* Job Details Modal */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={jobDetailsModalVisible}
-        onRequestClose={() => setJobDetailsModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              {selectedJobDetails?.logoUrl && (
-                <Image 
-                  source={{ uri: selectedJobDetails.logoUrl }} 
-                  style={styles.modalLogo}
-                  defaultSource={require('../../assets/images/placeholder-logo.jpeg')}
-                />
-              )}
-              <View style={styles.modalTitleContainer}>
-                <Text style={styles.modalTitle} numberOfLines={2}>
-                  {selectedJobDetails?.title}
-                </Text>
-                <Text style={styles.modalCompany}>
-                  {selectedJobDetails?.company}
-                </Text>
-              </View>
-              <TouchableOpacity 
-                onPress={() => setJobDetailsModalVisible(false)}
-                style={styles.modalClose}
-              >
-                <MaterialIcons name="close" size={24} color="#253528" />
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.modalBody}>
-              <View style={styles.detailRow}>
-                <Feather name="map-pin" size={16} color="#49654E" />
-                <Text style={styles.detailText}>{selectedJobDetails?.location}</Text>
-              </View>
-              
-              <View style={styles.detailRow}>
-                <Feather name="dollar-sign" size={16} color="#49654E" />
-                <Text style={styles.detailText}>{selectedJobDetails?.salary}</Text>
-              </View>
-              
-              <TouchableOpacity 
-                style={styles.applyButtonLarge}
-                onPress={() => {
-                  setJobDetailsModalVisible(false);
-                  setTimeout(() => {
-                    if (selectedJobDetails?.applyLink) {
-                      openJobApplication(selectedJobDetails.applyLink);
-                    }
-                  }, 300);
-                }}
-                activeOpacity={0.6}
-              >
-                <Feather name="external-link" size={18} color="#FFFFFF" style={styles.applyButtonIcon} />
-                <Text style={styles.applyButtonText}>Apply Now</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 };
@@ -938,79 +459,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
-  jobResultsTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#253528',
-    marginBottom: 12,
-    textAlign: 'left',
-  },
-  jobApplyText: {
-    fontSize: 16,
-    color: '#FFFFFF',
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  jobCardDetails: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 8,
-    gap: 12,
-  },
   container: {
     flex: 1,
     backgroundColor: '#F8FAF8',
-  },
-  noJobsContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 16,
-  },
-  noJobsText: {
-    fontSize: 16,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginVertical: 12,
-  },
-  jobCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: '#E0E7E0',
-  },
-  jobCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  jobTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#253528',
-    marginBottom: 2,
-  },
-  jobCompany: {
-    fontSize: 14,
-    color: '#49654E',
-    fontWeight: '500',
-    marginBottom: 2,
-  },
-  companyLogo: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    marginRight: 10,
-    backgroundColor: '#E0E7E0',
-    resizeMode: 'contain',
   },
   header: {
     flexDirection: 'row',
@@ -1046,154 +497,191 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F8FAF8',
+  },
+  chatContainer: {
+    flex: 1,
+    position: 'relative',
   },
   messageList: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    flexGrow: 1,
+    padding: 16,
+    paddingBottom: 8,
   },
-  commandsContainer: {
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(0, 0, 0, 0.1)',
-    maxHeight: 120,
-  },
-  commandsList: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  commandDescription: {
-    fontSize: 13,
-    color: '#6B7280',
-    marginLeft: 8,
-  },
-  commandText: {
-    fontSize: 16,
-    color: '#253528',
-    fontWeight: '500',
-    marginRight: 8,
+  scrollToBottomButton: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    backgroundColor: '#8BA889',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
   },
   inputContainer: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    padding: 12,
     backgroundColor: '#FFFFFF',
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: 'rgba(0, 0, 0, 0.1)',
+    alignItems: 'flex-end',
   },
   input: {
     flex: 1,
-    minHeight: 40,
-    maxHeight: 100,
-    borderWidth: 1,
-    borderColor: '#E0E7E0',
+    backgroundColor: '#F0F4F0',
     borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
+    paddingVertical: 10,
+    maxHeight: 120,
     color: '#253528',
-    backgroundColor: '#FFFFFF',
-    marginRight: 8,
-    textAlignVertical: 'top',
-  },
-  voiceButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#49654E',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 8,
-  },
-  voiceButtonRecording: {
-    backgroundColor: '#DC2626',
+    fontSize: 16,
   },
   sendButton: {
+    backgroundColor: '#8BA889',
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#49654E',
     justifyContent: 'center',
     alignItems: 'center',
+    marginLeft: 8,
   },
   sendButtonDisabled: {
-    backgroundColor: '#A8B8A8',
+    backgroundColor: '#8BA88980',
   },
-  voiceModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  voiceButton: {
+    backgroundColor: '#8BA889',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
+    marginLeft: 8,
   },
-  voiceModalContent: {
+  commandsContainer: {
+    position: 'absolute',
+    bottom: 70,
+    left: 12,
+    right: 12,
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 30,
-    alignItems: 'center',
-    minWidth: 280,
-    elevation: 5,
+    borderRadius: 12,
+    maxHeight: 200,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    zIndex: 10,
   },
-  recordingIndicator: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#49654E',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
+  commandsList: {
+    borderRadius: 12,
+    padding: 4,
   },
-  voiceModalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#253528',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  voiceModalSubtitle: {
-    fontSize: 14,
-    color: '#49654E',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  recordingTimer: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#DC2626',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  voiceModalButtons: {
+  commandItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 20,
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F4F0',
   },
-  cancelButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-  },
-  cancelButtonText: {
+  commandText: {
+    fontWeight: '600',
+    color: '#49654E',
     fontSize: 16,
-    fontWeight: '500',
-    color: '#6B7280',
+    marginRight: 8,
   },
-  recordButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#49654E',
+  commandDescription: {
+    color: '#666666',
+    fontSize: 14,
+    flex: 1,
+  },
+  jobCardsContainer: {
+    marginTop: 8,
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  jobResultsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#253528',
+    marginBottom: 12,
+    marginLeft: 4,
+  },
+  jobCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  jobCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  logoContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: '#F0F4F0',
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 12,
+    overflow: 'hidden',
   },
-  stopButton: {
-    backgroundColor: '#DC2626',
+  companyLogo: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+  },
+  jobTitleContainer: {
+    flex: 1,
+  },
+  jobTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#253528',
+  },
+  jobCompany: {
+    fontSize: 14,
+    color: '#49654E',
+    marginTop: 2,
+  },
+  jobCardDetails: {
+    marginBottom: 12,
+  },
+  jobCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  jobLocation: {
+    fontSize: 14,
+    color: '#666666',
+    marginLeft: 6,
+  },
+  jobSalary: {
+    fontSize: 14,
+    color: '#666666',
+    marginLeft: 6,
+  },
+  jobApplyButton: {
+    backgroundColor: '#8BA889',
+    borderRadius: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  jobApplyText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 14,
   },
   modalOverlay: {
     flex: 1,
@@ -1210,138 +698,65 @@ const styles = StyleSheet.create({
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   modalLogo: {
-    width: 50,
-    height: 50,
+    width: 48,
+    height: 48,
     borderRadius: 8,
     marginRight: 12,
   },
   modalTitleContainer: {
     flex: 1,
-    marginRight: 12,
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
     color: '#253528',
-    marginBottom: 4,
-    lineHeight: 24,
   },
   modalCompany: {
-    fontSize: 14,
+    fontSize: 16,
     color: '#49654E',
-    fontWeight: '500',
+    marginTop: 4,
   },
   modalClose: {
     padding: 4,
   },
   modalBody: {
-    gap: 16,
+    marginBottom: 20,
   },
   detailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    marginBottom: 12,
   },
   detailText: {
     fontSize: 16,
     color: '#253528',
-    flex: 1,
+    marginLeft: 10,
   },
   applyButtonLarge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
     backgroundColor: '#49654E',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
     borderRadius: 12,
-    marginTop: 12,
-  },
-  applyButtonIcon: {
-    marginRight: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 16,
   },
   applyButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  processingHint: {
-    fontSize: 13,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  resumeViewText: {
-    fontSize: 16,
     color: '#FFFFFF',
     fontWeight: '600',
-    marginLeft: 8,
+    fontSize: 16,
   },
-  resumeSubtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginTop: 2,
-  },
-  resumeTextContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    marginLeft: 12,
-  },
-  resumeIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: '#E0E7E0',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  resumeCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+  noJobsContainer: {
     padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: '#E0E7E0',
-  },
-  resumeCardHeader: {
-    flexDirection: 'row',
+    backgroundColor: '#F0F4F0',
+    borderRadius: 12,
     alignItems: 'center',
-    marginBottom: 8,
   },
-
-  jobApplyButton: {
-    backgroundColor: '#49654E',
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    marginTop: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+  noJobsText: {
+    fontSize: 16,
+    color: '#666666',
   },
-
-  jobSalary: {
-    fontSize: 14,
-    color: '#253528',
-    fontWeight: '500',
-    marginLeft: 4,
-  },
-
-  jobLocation: {
-    fontSize: 14,
-    color: '#253528',
-    fontWeight: '500',
-    marginLeft: 4,
-  },
-
 });
 
 export default ChatScreen;

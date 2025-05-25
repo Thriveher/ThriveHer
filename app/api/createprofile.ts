@@ -3,7 +3,7 @@ import Groq from 'groq-sdk';
 
 // Initialize Groq client with hardcoded API key
 const groq = new Groq({
-  apiKey: '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', // Replace with your actual Groq API key
+  apiKey: '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', // Replace with your actual Groq API key
   dangerouslyAllowBrowser: true // Only for client-side usage
 });
 
@@ -200,7 +200,7 @@ interface GroqEnhancementResponse {
 
 export class ProfileAPI {
   // Hardcoded configuration
-  private static readonly GROQ_API_KEY = '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'; // Replace with your actual Groq API key
+  private static readonly GROQ_API_KEY = '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'; // Replace with your actual Groq API key
   private static readonly SUPABASE_URL = 'https://ibwjjwzomoyhkxugmmmw.supabase.co'; // Replace with your Supabase URL
   private static readonly SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlid2pqd3pvbW95aGt4dWdtbW13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ4NzkwODgsImV4cCI6MjA2MDQ1NTA4OH0.RmnNBQh_1KJo0TgCjs72aBoxWoOsd_vWjNeIHRfVXac'; // Replace with your Supabase anon key
 
@@ -324,26 +324,22 @@ For interests, generate professional and personal interests that align with thei
 
 Respond with a JSON object following this exact structure (no additional text, only JSON):
 {
-  "summary": "A compelling 4-5 sentence professional summary written in first person",
-  "strengths": ["Strength 1", "Strength 2", "Strength 3", "Strength 4", "Strength 5", "Strength 6", "Strength 7", "Strength 8"],
+  "summary": "A compelling 1-3 short sentence professional summary written in first person",
+  "strengths": ["Strength 1", "Strength 2", "Strength 3"],
   "enhanced_education": [
     {
       "institution": "Same as input",
       "degree": "Same as input",
       "field_of_study": "Relevant field based on degree",
-      "description": "3-4 sentences in first person about education experience",
-      "relevant_coursework": ["Course 1", "Course 2", "Course 3", "Course 4", "Course 5"],
-      "projects": ["Project 1", "Project 2", "Project 3"]
+      "description": "1-2 very short sentences in first person about education experience",
     }
   ],
   "enhanced_experience": [
     {
       "company": "Same as input",
       "position": "Same as input", 
-      "description": "4-5 sentences in first person about work experience and what you learned",
+      "description": "1-2 very short sentences in first person about work experience and what you learned",
       "skills_used": ["Skill 1", "Skill 2", "Skill 3", "Skill 4", "Skill 5"],
-      "key_projects": ["Project 1", "Project 2", "Project 3"],
-      "achievements": ["Achievement 1", "Achievement 2", "Achievement 3"]
     }
   ],
   "certificates": [
@@ -353,7 +349,7 @@ Respond with a JSON object following this exact structure (no additional text, o
       "description": "Brief description of what this certificate demonstrates or validates"
     }
   ],
-  "interests": ["Professional Interest 1", "Personal Interest 1", "Interest 2", "Interest 3", "Interest 4"]
+  "interests": ["Professional Interest 1", "Personal Interest 1", "Interest 2"]
 }`;
 
       const completion = await groq.chat.completions.create({
@@ -367,9 +363,9 @@ Respond with a JSON object following this exact structure (no additional text, o
             content: prompt
           }
         ],
-        model: "llama3-70b-8192",
-        temperature: 0.7,
-        max_tokens: 4000,
+        model: "llama-3.3-70b-versatile",
+        temperature: 0.9,
+        max_tokens: 5000,
       });
 
       const response = completion.choices[0]?.message?.content;
