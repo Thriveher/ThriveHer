@@ -18,7 +18,7 @@ export interface VoiceRecordingOptions {
 
 /**
  * Records audio from user's microphone and transcribes it using Groq's Whisper API
- * with automatic language detection for Indian languages
+ * with automatic language detection for Indian languages and English
  * @param options - Optional configuration for recording
  * @returns Promise<TranscriptionResult> - The transcribed text, detected language, or error
  */
@@ -120,7 +120,6 @@ export function stopRecording(): void {
 
 /**
  * Transcribe an audio blob using Groq's Whisper API with automatic language detection
- * Filters results to only support Indian languages
  * @param audioBlob - The audio data to transcribe
  * @returns Promise<TranscriptionResult> - The transcribed text, detected language, or error
  */
@@ -153,17 +152,10 @@ async function transcribeAudioBlob(audioBlob: Blob): Promise<TranscriptionResult
       throw new Error('No transcription text received from API');
     }
 
-    const detectedLanguage = result.language || 'unknown';
-    
-    // Check if detected language is an Indian language
-    if (!isIndianLanguage(detectedLanguage)) {
-      throw new Error(`Unsupported language detected: ${getLanguageName(detectedLanguage)}. Only Indian languages are supported.`);
-    }
-
     return {
       success: true,
       text: result.text.trim(),
-      language: detectedLanguage
+      language: result.language || 'unknown' // Get detected language from verbose response
     };
 
   } catch (error) {
@@ -172,42 +164,6 @@ async function transcribeAudioBlob(audioBlob: Blob): Promise<TranscriptionResult
       error: error instanceof Error ? error.message : 'Transcription failed'
     };
   }
-}
-
-/**
- * Check if a language code represents an Indian language
- * @param languageCode - ISO language code
- * @returns boolean - Whether the language is an Indian language
- */
-function isIndianLanguage(languageCode: string): boolean {
-  const indianLanguages = [
-    'hi', // Hindi
-    'bn', // Bengali
-    'te', // Telugu
-    'mr', // Marathi
-    'ta', // Tamil
-    'gu', // Gujarati
-    'kn', // Kannada
-    'ml', // Malayalam
-    'or', // Odia
-    'pa', // Punjabi
-    'as', // Assamese
-    'mai', // Maithili
-    'mag', // Magahi
-    'bho', // Bhojpuri
-    'ne', // Nepali
-    'sa', // Sanskrit
-    'ks', // Kashmiri
-    'sd', // Sindhi
-    'kok', // Konkani
-    'mni', // Manipuri
-    'sat', // Santali
-    'doi', // Dogri
-    'brx', // Bodo
-    'en' // English (widely used in India)
-  ];
-  
-  return indianLanguages.includes(languageCode);
 }
 
 /**
@@ -246,55 +202,104 @@ export async function transcribeAudioFile(audioFile: File): Promise<Transcriptio
 
 /**
  * Get human-readable language name from language code
- * Focused on Indian languages
- * @param languageCode - ISO language code (e.g., 'hi', 'bn', 'te')
+ * Supports Indian languages and English only
+ * @param languageCode - ISO language code (e.g., 'en', 'hi', 'ta')
  * @returns string - Human-readable language name
  */
 export function getLanguageName(languageCode: string): string {
   const indianLanguageNames: { [key: string]: string } = {
-    'hi': 'Hindi (हिन्दी)',
-    'bn': 'Bengali (বাংলা)',
-    'te': 'Telugu (తెలుగు)',
-    'mr': 'Marathi (मराठी)',
-    'ta': 'Tamil (தமிழ்)',
-    'gu': 'Gujarati (ગુજરાતી)',
-    'kn': 'Kannada (ಕನ್ನಡ)',
-    'ml': 'Malayalam (മലയാളം)',
-    'or': 'Odia (ଓଡ଼ିଆ)',
-    'pa': 'Punjabi (ਪੰਜਾਬੀ)',
-    'as': 'Assamese (অসমীয়া)',
-    'mai': 'Maithili (मैथिली)',
-    'mag': 'Magahi (𑂧𑂏𑂯𑂲)',
-    'bho': 'Bhojpuri (भोजपुरी)',
-    'ne': 'Nepali (नेपाली)',
-    'sa': 'Sanskrit (संस्कृतम्)',
-    'ks': 'Kashmiri (कॉशुर)',
-    'sd': 'Sindhi (سنڌي)',
-    'kok': 'Konkani (कोंकणी)',
-    'mni': 'Manipuri (মণিপুরী)',
-    'sat': 'Santali (ᱥᱟᱱᱛᱟᱲᱤ)',
-    'doi': 'Dogri (डोगरी)',
-    'brx': 'Bodo (बड़ो)',
+    // English
     'en': 'English',
+    
+    // Major Indian Languages (22 official languages)
+    'hi': 'Hindi', // हिन्दी
+    'bn': 'Bengali', // বাংলা
+    'te': 'Telugu', // తెలుగు
+    'mr': 'Marathi', // मराठी
+    'ta': 'Tamil', // தமிழ்
+    'gu': 'Gujarati', // ગુજરાતી
+    'kn': 'Kannada', // ಕನ್ನಡ
+    'ml': 'Malayalam', // മലയാളം
+    'or': 'Odia', // ଓଡ଼ିଆ
+    'pa': 'Punjabi', // ਪੰਜਾਬੀ
+    'as': 'Assamese', // অসমীয়া
+    'ne': 'Nepali', // नेपाली
+    'si': 'Sinhala', // සිංහල
+    'my': 'Myanmar', // မြန်မာ
+    'ks': 'Kashmiri', // कॉशुर
+    'sd': 'Sindhi', // سنڌي
+    'sa': 'Sanskrit', // संस्कृत
+    'mai': 'Maithili', // मैथिली
+    'doi': 'Dogri', // डोगरी
+    'sat': 'Santali', // ᱥᱟᱱᱛᱟᱲᱤ
+    'kok': 'Konkani', // कोंकणी
+    'mni': 'Manipuri', // মৈতৈলোন্
+    'brx': 'Bodo', // बड़ो
+    
+    // Regional variations and common codes
+    'hi-in': 'Hindi (India)',
+    'en-in': 'Indian English',
+    'ta-in': 'Tamil (India)',
+    'te-in': 'Telugu (India)',
+    'bn-in': 'Bengali (India)',
+    'gu-in': 'Gujarati (India)',
+    'kn-in': 'Kannada (India)',
+    'ml-in': 'Malayalam (India)',
+    'mr-in': 'Marathi (India)',
+    'or-in': 'Odia (India)',
+    'pa-in': 'Punjabi (India)',
+    'as-in': 'Assamese (India)',
+    
     'unknown': 'Unknown Language'
   };
 
-  return indianLanguageNames[languageCode] || `${languageCode.toUpperCase()} (Unsupported)`;
+  return indianLanguageNames[languageCode] || indianLanguageNames[languageCode.toLowerCase()] || languageCode.toUpperCase();
 }
 
 /**
- * Get list of all supported Indian languages
- * @returns Array of objects with language code and name
+ * Check if a detected language is supported (Indian languages + English)
+ * @param languageCode - ISO language code
+ * @returns boolean - Whether the language is supported
  */
-export function getSupportedLanguages(): Array<{ code: string; name: string }> {
-  const supportedCodes = [
-    'hi', 'bn', 'te', 'mr', 'ta', 'gu', 'kn', 'ml', 'or', 'pa', 
-    'as', 'mai', 'mag', 'bho', 'ne', 'sa', 'ks', 'sd', 'kok', 
-    'mni', 'sat', 'doi', 'brx', 'en'
+export function isSupportedLanguage(languageCode: string): boolean {
+  const supportedLanguages = [
+    'en', 'hi', 'bn', 'te', 'mr', 'ta', 'gu', 'kn', 'ml', 'or', 'pa', 'as', 
+    'ne', 'si', 'my', 'ks', 'sd', 'sa', 'mai', 'doi', 'sat', 'kok', 'mni', 'brx',
+    'hi-in', 'en-in', 'ta-in', 'te-in', 'bn-in', 'gu-in', 'kn-in', 'ml-in', 
+    'mr-in', 'or-in', 'pa-in', 'as-in'
   ];
   
-  return supportedCodes.map(code => ({
-    code,
-    name: getLanguageName(code)
-  }));
+  return supportedLanguages.includes(languageCode.toLowerCase());
+}
+
+/**
+ * Get list of all supported languages
+ * @returns Array of language objects with code and name
+ */
+export function getSupportedLanguages(): Array<{ code: string; name: string }> {
+  return [
+    { code: 'en', name: 'English' },
+    { code: 'hi', name: 'Hindi' },
+    { code: 'bn', name: 'Bengali' },
+    { code: 'te', name: 'Telugu' },
+    { code: 'mr', name: 'Marathi' },
+    { code: 'ta', name: 'Tamil' },
+    { code: 'gu', name: 'Gujarati' },
+    { code: 'kn', name: 'Kannada' },
+    { code: 'ml', name: 'Malayalam' },
+    { code: 'or', name: 'Odia' },
+    { code: 'pa', name: 'Punjabi' },
+    { code: 'as', name: 'Assamese' },
+    { code: 'ne', name: 'Nepali' },
+    { code: 'si', name: 'Sinhala' },
+    { code: 'ks', name: 'Kashmiri' },
+    { code: 'sd', name: 'Sindhi' },
+    { code: 'sa', name: 'Sanskrit' },
+    { code: 'mai', name: 'Maithili' },
+    { code: 'doi', name: 'Dogri' },
+    { code: 'sat', name: 'Santali' },
+    { code: 'kok', name: 'Konkani' },
+    { code: 'mni', name: 'Manipuri' },
+    { code: 'brx', name: 'Bodo' }
+  ];
 }
