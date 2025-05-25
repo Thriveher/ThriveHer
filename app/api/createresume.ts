@@ -34,19 +34,14 @@ interface DatabaseExperienceEntry {
 
 interface Certification {
   name: string;
-  issuer: string;
+  issuer?: string;
+  description?: string;
 }
 
 interface ProfileData {
   user_id: string;
   name: string;
   email: string;
-  phone?: string;
-  location?: string;
-  linkedin?: string;
-  github?: string;
-  portfolio?: string;
-  profile_photo?: string;
   education: DatabaseEducationEntry[];
   experience: DatabaseExperienceEntry[];
   skills: string[];
@@ -168,21 +163,24 @@ function parseCertifications(certifications: any[]): Certification[] {
           if (parsed.name && parsed.name.trim() !== '') {
             return {
               name: parsed.name.trim(),
-              issuer: parsed.issuer || ''
+              issuer: parsed.issuer || '',
+              description: parsed.description || ''
             };
           }
         } catch (e) {
           if (cert.trim() !== '') {
             return {
               name: cert.trim(),
-              issuer: ''
+              issuer: '',
+              description: ''
             };
           }
         }
       } else if (cert && typeof cert === 'object' && cert.name && cert.name.trim() !== '') {
         return {
           name: cert.name.trim(),
-          issuer: cert.issuer || ''
+          issuer: cert.issuer || '',
+          description: cert.description || ''
         };
       }
       return null;
@@ -203,7 +201,7 @@ function formatDateRange(startDate?: string, endDate?: string): string {
   const end = endDate ? formatDate(endDate) : 'Present';
   
   if (start && end) {
-    return `${start} – ${end}`;
+    return `${start} - ${end}`;
   } else if (start) {
     return start;
   } else if (end && end !== 'Present') {
@@ -220,287 +218,303 @@ function createResumeHTML(profileData: ProfileData): string {
 <div id="resume-content" style="
   width: 8.5in;
   min-height: 11in;
-  padding: 0.75in;
+  padding: 0;
   margin: 0 auto;
   background: white;
-  font-family: 'Times New Roman', Times, serif;
+  font-family: 'Times New Roman', serif;
   font-size: 11pt;
-  line-height: 1.15;
+  line-height: 1.4;
   color: #000000;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: row;
 ">
-  <!-- Header -->
-  <div style="text-align: center; margin-bottom: 24pt; border-bottom: 1pt solid #000000; padding-bottom: 12pt;">
-    <h1 style="
-      font-size: 18pt;
-      font-weight: bold;
-      margin: 0 0 6pt 0;
-      color: #000000;
-      text-transform: uppercase;
-      letter-spacing: 2pt;
-    ">${profileData.name}</h1>
-    <div style="
-      font-size: 10pt;
-      color: #000000;
-      line-height: 1.2;
-      margin-top: 8pt;
-    ">
-      ${profileData.phone ? `${profileData.phone}` : ''}${profileData.phone && profileData.email ? ' | ' : ''}${profileData.email}
-      ${(profileData.phone || profileData.email) && profileData.location ? ' | ' : ''}${profileData.location || ''}
-      <br>
-      ${profileData.linkedin || profileData.github || profileData.portfolio ? `
-        ${profileData.linkedin || ''}${profileData.linkedin && (profileData.github || profileData.portfolio) ? ' | ' : ''}${profileData.github || ''}${profileData.github && profileData.portfolio ? ' | ' : ''}${profileData.portfolio || ''}
-      ` : ''}
-    </div>
-  </div>
-
-  ${profileData.summary && profileData.summary.trim() ? `
-  <!-- Professional Summary -->
-  <div style="margin-bottom: 18pt;">
-    <h2 style="
-      font-size: 12pt;
-      font-weight: bold;
-      color: #000000;
-      margin: 0 0 8pt 0;
-      text-transform: uppercase;
-      letter-spacing: 1pt;
-      border-bottom: 0.5pt solid #000000;
-      padding-bottom: 2pt;
-    ">PROFESSIONAL SUMMARY</h2>
-    <p style="
-      margin: 0;
-      text-align: justify;
-      line-height: 1.15;
-      text-indent: 0;
-    ">${profileData.summary}</p>
-  </div>
-  ` : ''}
-
-  ${profileData.experience && profileData.experience.length > 0 ? `
-  <!-- Professional Experience -->
-  <div style="margin-bottom: 18pt;">
-    <h2 style="
-      font-size: 12pt;
-      font-weight: bold;
-      color: #000000;
-      margin: 0 0 12pt 0;
-      text-transform: uppercase;
-      letter-spacing: 1pt;
-      border-bottom: 0.5pt solid #000000;
-      padding-bottom: 2pt;
-    ">PROFESSIONAL EXPERIENCE</h2>
-    ${profileData.experience.map(exp => `
-    <div style="margin-bottom: 16pt; page-break-inside: avoid;">
-      <div style="
-        display: table;
-        width: 100%;
-        margin-bottom: 4pt;
-      ">
-        <div style="display: table-row;">
-          <div style="display: table-cell; width: 75%; vertical-align: top;">
-            <div style="
-              font-size: 11pt;
-              font-weight: bold;
-              margin: 0;
-              color: #000000;
-            ">${exp.position}</div>
-            <div style="
-              font-size: 11pt;
-              color: #000000;
-              font-style: italic;
-              margin-top: 2pt;
-            ">${exp.company}${exp.location ? `, ${exp.location}` : ''}</div>
-          </div>
-          <div style="display: table-cell; width: 25%; text-align: right; vertical-align: top;">
-            <div style="
-              font-size: 11pt;
-              color: #000000;
-              white-space: nowrap;
-            ">${formatDateRange(exp.start_date, exp.end_date)}</div>
-          </div>
-        </div>
-      </div>
-      ${exp.description || (exp.key_projects && exp.key_projects.length > 0) || (exp.achievements && exp.achievements.length > 0) ? `
-      <ul style="margin: 4pt 0 0 18pt; padding: 0; list-style-type: disc;">
-        ${exp.description ? exp.description.split('.').filter(s => s.trim() && s.trim().length > 5).map(desc => `
-          <li style="margin-bottom: 3pt; line-height: 1.15;">${desc.trim()}${desc.trim().endsWith('.') ? '' : '.'}</li>
-        `).join('') : ''}
-        ${exp.key_projects && exp.key_projects.length > 0 && exp.key_projects.some(p => p.trim()) ? `
-          <li style="margin-bottom: 3pt; line-height: 1.15;"><strong>Key Projects:</strong> ${exp.key_projects.filter(p => p.trim()).join(', ')}.</li>
-        ` : ''}
-        ${exp.achievements && exp.achievements.length > 0 && exp.achievements.some(a => a.trim()) ? `
-          <li style="margin-bottom: 3pt; line-height: 1.15;"><strong>Key Achievements:</strong> ${exp.achievements.filter(a => a.trim()).join('; ')}.</li>
-        ` : ''}
-      </ul>
-      ` : ''}
-    </div>
-    `).join('')}
-  </div>
-  ` : ''}
-
-  ${profileData.education && profileData.education.length > 0 ? `
-  <!-- Education -->
-  <div style="margin-bottom: 18pt;">
-    <h2 style="
-      font-size: 12pt;
-      font-weight: bold;
-      color: #000000;
-      margin: 0 0 12pt 0;
-      text-transform: uppercase;
-      letter-spacing: 1pt;
-      border-bottom: 0.5pt solid #000000;
-      padding-bottom: 2pt;
-    ">EDUCATION</h2>
-    ${profileData.education.map(edu => `
-    <div style="margin-bottom: 12pt; page-break-inside: avoid;">
-      <div style="
-        display: table;
-        width: 100%;
-        margin-bottom: 4pt;
-      ">
-        <div style="display: table-row;">
-          <div style="display: table-cell; width: 75%; vertical-align: top;">
-            <div style="
-              font-size: 11pt;
-              font-weight: bold;
-              margin: 0;
-              color: #000000;
-            ">${edu.degree}${edu.field_of_study ? ` in ${edu.field_of_study}` : ''}</div>
-            <div style="
-              font-size: 11pt;
-              color: #000000;
-              font-style: italic;
-              margin-top: 2pt;
-            ">${edu.institution}${edu.location ? `, ${edu.location}` : ''}</div>
-          </div>
-          <div style="display: table-cell; width: 25%; text-align: right; vertical-align: top;">
-            <div style="
-              font-size: 11pt;
-              color: #000000;
-              white-space: nowrap;
-            ">${formatDateRange(edu.start_date, edu.end_date)}</div>
-          </div>
-        </div>
-      </div>
-      ${edu.description || (edu.projects && edu.projects.length > 0) || (edu.relevant_coursework && edu.relevant_coursework.length > 0) ? `
-      <div style="margin-top: 4pt;">
-        ${edu.description ? `<div style="margin-bottom: 4pt; line-height: 1.15;">${edu.description}</div>` : ''}
-        ${edu.projects && edu.projects.length > 0 && edu.projects.some(p => p.trim()) ? `
-          <div style="margin-bottom: 4pt; line-height: 1.15;"><strong>Notable Projects:</strong> ${edu.projects.filter(p => p.trim()).join(', ')}.</div>
-        ` : ''}
-        ${edu.relevant_coursework && edu.relevant_coursework.length > 0 && edu.relevant_coursework.some(c => c.trim()) ? `
-          <div style="margin-bottom: 4pt; line-height: 1.15;"><strong>Relevant Coursework:</strong> ${edu.relevant_coursework.filter(c => c.trim()).join(', ')}.</div>
-        ` : ''}
-      </div>
-      ` : ''}
-    </div>
-    `).join('')}
-  </div>
-  ` : ''}
-
-  <!-- Skills and Additional Information -->
+  <!-- Main Content (Left Section - 70%) -->
   <div style="
-    display: table;
-    width: 100%;
-    margin-top: 12pt;
+    width: 70%;
+    padding: 0.75in 0.5in 0.75in 0.75in;
+    background: white;
+    border-right: 2px solid #000000;
   ">
-    <div style="display: table-row;">
-      <div style="display: table-cell; width: 50%; vertical-align: top; padding-right: 24pt;">
-        ${profileData.skills && profileData.skills.length > 0 ? `
-        <div style="margin-bottom: 16pt;">
-          <h3 style="
-            font-size: 12pt;
-            font-weight: bold;
-            color: #000000;
-            margin: 0 0 8pt 0;
-            text-transform: uppercase;
-            letter-spacing: 1pt;
-            border-bottom: 0.5pt solid #000000;
-            padding-bottom: 2pt;
-          ">TECHNICAL SKILLS</h3>
-          <div style="line-height: 1.3;">
-            ${profileData.skills.filter(skill => skill.trim()).join(' • ')}
-          </div>
-        </div>
-        ` : ''}
-
-        ${profileData.languages && profileData.languages.length > 0 ? `
-        <div style="margin-bottom: 16pt;">
-          <h3 style="
-            font-size: 12pt;
-            font-weight: bold;
-            color: #000000;
-            margin: 0 0 8pt 0;
-            text-transform: uppercase;
-            letter-spacing: 1pt;
-            border-bottom: 0.5pt solid #000000;
-            padding-bottom: 2pt;
-          ">LANGUAGES</h3>
-          <div style="line-height: 1.3;">
-            ${profileData.languages.filter(lang => lang.trim()).join(' • ')}
-          </div>
-        </div>
-        ` : ''}
-      </div>
-
-      <div style="display: table-cell; width: 50%; vertical-align: top;">
-        ${certifications.length > 0 ? `
-        <div style="margin-bottom: 16pt;">
-          <h3 style="
-            font-size: 12pt;
-            font-weight: bold;
-            color: #000000;
-            margin: 0 0 8pt 0;
-            text-transform: uppercase;
-            letter-spacing: 1pt;
-            border-bottom: 0.5pt solid #000000;
-            padding-bottom: 2pt;
-          ">CERTIFICATIONS</h3>
-          <div style="line-height: 1.3;">
-            ${certifications.map(cert => 
-              `${cert.name}${cert.issuer ? ` (${cert.issuer})` : ''}`
-            ).join(' • ')}
-          </div>
-        </div>
-        ` : ''}
-
-        ${profileData.interests && profileData.interests.length > 0 ? `
-        <div style="margin-bottom: 16pt;">
-          <h3 style="
-            font-size: 12pt;
-            font-weight: bold;
-            color: #000000;
-            margin: 0 0 8pt 0;
-            text-transform: uppercase;
-            letter-spacing: 1pt;
-            border-bottom: 0.5pt solid #000000;
-            padding-bottom: 2pt;
-          ">INTERESTS</h3>
-          <div style="line-height: 1.3;">
-            ${profileData.interests.filter(interest => interest.trim()).join(' • ')}
-          </div>
-        </div>
-        ` : ''}
-
-        ${profileData.strengths && profileData.strengths.length > 0 ? `
-        <div style="margin-bottom: 16pt;">
-          <h3 style="
-            font-size: 12pt;
-            font-weight: bold;
-            color: #000000;
-            margin: 0 0 8pt 0;
-            text-transform: uppercase;
-            letter-spacing: 1pt;
-            border-bottom: 0.5pt solid #000000;
-            padding-bottom: 2pt;
-          ">KEY STRENGTHS</h3>
-          <div style="line-height: 1.3;">
-            ${profileData.strengths.filter(strength => strength.trim()).join(' • ')}
-          </div>
-        </div>
-        ` : ''}
+    <!-- Header -->
+    <div style="margin-bottom: 30pt;">
+      <h1 style="
+        font-size: 24pt;
+        font-weight: bold;
+        margin: 0 0 8pt 0;
+        color: #000000;
+        text-transform: uppercase;
+        letter-spacing: 2pt;
+        text-align: left;
+        border-bottom: 3pt solid #000000;
+        padding-bottom: 8pt;
+      ">${profileData.name}</h1>
+      <div style="
+        font-size: 11pt;
+        color: #000000;
+        margin-top: 12pt;
+      ">
+        <strong>Email:</strong> ${profileData.email}
       </div>
     </div>
+
+    ${profileData.summary && profileData.summary.trim() ? `
+    <!-- Professional Summary -->
+    <div style="margin-bottom: 25pt;">
+      <h2 style="
+        font-size: 14pt;
+        font-weight: bold;
+        color: #000000;
+        margin: 0 0 10pt 0;
+        text-transform: uppercase;
+        letter-spacing: 1pt;
+        border-bottom: 1pt solid #000000;
+        padding-bottom: 4pt;
+      ">PROFESSIONAL SUMMARY</h2>
+      <p style="
+        margin: 0;
+        text-align: justify;
+        line-height: 1.5;
+        color: #000000;
+      ">${profileData.summary}</p>
+    </div>
+    ` : ''}
+
+    ${profileData.experience && profileData.experience.length > 0 ? `
+    <!-- Professional Experience -->
+    <div style="margin-bottom: 25pt;">
+      <h2 style="
+        font-size: 14pt;
+        font-weight: bold;
+        color: #000000;
+        margin: 0 0 15pt 0;
+        text-transform: uppercase;
+        letter-spacing: 1pt;
+        border-bottom: 1pt solid #000000;
+        padding-bottom: 4pt;
+      ">PROFESSIONAL EXPERIENCE</h2>
+      ${profileData.experience.map(exp => `
+      <div style="margin-bottom: 20pt; page-break-inside: avoid;">
+        <div style="margin-bottom: 8pt;">
+          <div style="
+            font-size: 12pt;
+            font-weight: bold;
+            margin: 0 0 4pt 0;
+            color: #000000;
+          ">${exp.position}</div>
+          <div style="
+            font-size: 11pt;
+            color: #000000;
+            font-style: italic;
+            margin-bottom: 4pt;
+          ">${exp.company}${exp.location ? `, ${exp.location}` : ''}</div>
+          <div style="
+            font-size: 10pt;
+            color: #000000;
+            font-weight: bold;
+          ">${formatDateRange(exp.start_date, exp.end_date)}</div>
+        </div>
+        
+        ${exp.description ? `
+        <div style="margin-bottom: 8pt;">
+          <p style="margin: 0; line-height: 1.4; text-align: justify;">${exp.description}</p>
+        </div>
+        ` : ''}
+        
+        ${(exp.key_projects && exp.key_projects.length > 0) || (exp.achievements && exp.achievements.length > 0) || (exp.skills_used && exp.skills_used.length > 0) ? `
+        <ul style="margin: 0; padding-left: 20pt; list-style-type: disc;">
+          ${exp.key_projects && exp.key_projects.length > 0 && exp.key_projects.some(p => p.trim()) ? 
+            exp.key_projects.filter(p => p.trim()).map(project => `
+              <li style="margin-bottom: 4pt; line-height: 1.4;"><strong>Project:</strong> ${project}</li>
+            `).join('') : ''}
+          ${exp.achievements && exp.achievements.length > 0 && exp.achievements.some(a => a.trim()) ? 
+            exp.achievements.filter(a => a.trim()).map(achievement => `
+              <li style="margin-bottom: 4pt; line-height: 1.4;">${achievement}</li>
+            `).join('') : ''}
+          ${exp.skills_used && exp.skills_used.length > 0 && exp.skills_used.some(s => s.trim()) ? `
+            <li style="margin-bottom: 4pt; line-height: 1.4;"><strong>Technologies Used:</strong> ${exp.skills_used.filter(s => s.trim()).join(', ')}</li>
+          ` : ''}
+        </ul>
+        ` : ''}
+      </div>
+      `).join('')}
+    </div>
+    ` : ''}
+
+    ${profileData.education && profileData.education.length > 0 ? `
+    <!-- Education -->
+    <div style="margin-bottom: 25pt;">
+      <h2 style="
+        font-size: 14pt;
+        font-weight: bold;
+        color: #000000;
+        margin: 0 0 15pt 0;
+        text-transform: uppercase;
+        letter-spacing: 1pt;
+        border-bottom: 1pt solid #000000;
+        padding-bottom: 4pt;
+      ">EDUCATION</h2>
+      ${profileData.education.map(edu => `
+      <div style="margin-bottom: 18pt; page-break-inside: avoid;">
+        <div style="margin-bottom: 8pt;">
+          <div style="
+            font-size: 12pt;
+            font-weight: bold;
+            margin: 0 0 4pt 0;
+            color: #000000;
+          ">${edu.degree}${edu.field_of_study ? ` in ${edu.field_of_study}` : ''}</div>
+          <div style="
+            font-size: 11pt;
+            color: #000000;
+            font-style: italic;
+            margin-bottom: 4pt;
+          ">${edu.institution}${edu.location ? `, ${edu.location}` : ''}</div>
+          <div style="
+            font-size: 10pt;
+            color: #000000;
+            font-weight: bold;
+          ">${formatDateRange(edu.start_date, edu.end_date)}</div>
+        </div>
+        
+        ${edu.description ? `
+        <div style="margin-bottom: 8pt;">
+          <p style="margin: 0; line-height: 1.4; text-align: justify;">${edu.description}</p>
+        </div>
+        ` : ''}
+        
+        ${(edu.projects && edu.projects.length > 0) || (edu.relevant_coursework && edu.relevant_coursework.length > 0) ? `
+        <div style="margin-top: 8pt;">
+          ${edu.projects && edu.projects.length > 0 && edu.projects.some(p => p.trim()) ? `
+            <div style="margin-bottom: 6pt;">
+              <strong>Notable Projects:</strong> ${edu.projects.filter(p => p.trim()).join(', ')}
+            </div>
+          ` : ''}
+          ${edu.relevant_coursework && edu.relevant_coursework.length > 0 && edu.relevant_coursework.some(c => c.trim()) ? `
+            <div style="margin-bottom: 6pt;">
+              <strong>Relevant Coursework:</strong> ${edu.relevant_coursework.filter(c => c.trim()).join(', ')}
+            </div>
+          ` : ''}
+        </div>
+        ` : ''}
+      </div>
+      `).join('')}
+    </div>
+    ` : ''}
+  </div>
+
+  <!-- Sidebar (Right Section - 30%) -->
+  <div style="
+    width: 30%;
+    padding: 0.75in 0.75in 0.75in 0.5in;
+    background: #f8f8f8;
+  ">
+    ${profileData.skills && profileData.skills.length > 0 ? `
+    <!-- Technical Skills -->
+    <div style="margin-bottom: 25pt;">
+      <h3 style="
+        font-size: 12pt;
+        font-weight: bold;
+        color: #000000;
+        margin: 0 0 12pt 0;
+        text-transform: uppercase;
+        letter-spacing: 1pt;
+        border-bottom: 1pt solid #000000;
+        padding-bottom: 4pt;
+      ">TECHNICAL SKILLS</h3>
+      <ul style="margin: 0; padding-left: 15pt; list-style-type: disc;">
+        ${profileData.skills.filter(skill => skill.trim()).map(skill => `
+          <li style="margin-bottom: 6pt; line-height: 1.3; font-size: 10pt;">${skill}</li>
+        `).join('')}
+      </ul>
+    </div>
+    ` : ''}
+
+    ${profileData.strengths && profileData.strengths.length > 0 ? `
+    <!-- Key Strengths -->
+    <div style="margin-bottom: 25pt;">
+      <h3 style="
+        font-size: 12pt;
+        font-weight: bold;
+        color: #000000;
+        margin: 0 0 12pt 0;
+        text-transform: uppercase;
+        letter-spacing: 1pt;
+        border-bottom: 1pt solid #000000;
+        padding-bottom: 4pt;
+      ">KEY STRENGTHS</h3>
+      <ul style="margin: 0; padding-left: 15pt; list-style-type: disc;">
+        ${profileData.strengths.filter(strength => strength.trim()).map(strength => `
+          <li style="margin-bottom: 6pt; line-height: 1.3; font-size: 10pt;">${strength}</li>
+        `).join('')}
+      </ul>
+    </div>
+    ` : ''}
+
+    ${certifications.length > 0 ? `
+    <!-- Certifications -->
+    <div style="margin-bottom: 25pt;">
+      <h3 style="
+        font-size: 12pt;
+        font-weight: bold;
+        color: #000000;
+        margin: 0 0 12pt 0;
+        text-transform: uppercase;
+        letter-spacing: 1pt;
+        border-bottom: 1pt solid #000000;
+        padding-bottom: 4pt;
+      ">CERTIFICATIONS</h3>
+      <ul style="margin: 0; padding-left: 15pt; list-style-type: disc;">
+        ${certifications.map(cert => `
+          <li style="margin-bottom: 8pt; line-height: 1.3; font-size: 10pt;">
+            <strong>${cert.name}</strong>
+            ${cert.issuer ? `<br><em>${cert.issuer}</em>` : ''}
+          </li>
+        `).join('')}
+      </ul>
+    </div>
+    ` : ''}
+
+    ${profileData.languages && profileData.languages.length > 0 ? `
+    <!-- Languages -->
+    <div style="margin-bottom: 25pt;">
+      <h3 style="
+        font-size: 12pt;
+        font-weight: bold;
+        color: #000000;
+        margin: 0 0 12pt 0;
+        text-transform: uppercase;
+        letter-spacing: 1pt;
+        border-bottom: 1pt solid #000000;
+        padding-bottom: 4pt;
+      ">LANGUAGES</h3>
+      <ul style="margin: 0; padding-left: 15pt; list-style-type: disc;">
+        ${profileData.languages.filter(lang => lang.trim()).map(language => `
+          <li style="margin-bottom: 6pt; line-height: 1.3; font-size: 10pt;">${language}</li>
+        `).join('')}
+      </ul>
+    </div>
+    ` : ''}
+
+    ${profileData.interests && profileData.interests.length > 0 ? `
+    <!-- Interests -->
+    <div style="margin-bottom: 25pt;">
+      <h3 style="
+        font-size: 12pt;
+        font-weight: bold;
+        color: #000000;
+        margin: 0 0 12pt 0;
+        text-transform: uppercase;
+        letter-spacing: 1pt;
+        border-bottom: 1pt solid #000000;
+        padding-bottom: 4pt;
+      ">INTERESTS</h3>
+      <ul style="margin: 0; padding-left: 15pt; list-style-type: disc;">
+        ${profileData.interests.filter(interest => interest.trim()).map(interest => `
+          <li style="margin-bottom: 6pt; line-height: 1.3; font-size: 10pt;">${interest}</li>
+        `).join('')}
+      </ul>
+    </div>
+    ` : ''}
   </div>
 </div>`;
 }
@@ -521,6 +535,8 @@ async function generatePDFFromHTML(html: string, fileName: string): Promise<Blob
   container.style.position = 'absolute';
   container.style.left = '-9999px';
   container.style.top = '0';
+  container.style.width = '8.5in';
+  container.style.background = 'white';
   document.body.appendChild(container);
 
   try {
@@ -534,13 +550,13 @@ async function generatePDFFromHTML(html: string, fileName: string): Promise<Blob
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#ffffff',
-      width: element.scrollWidth,
-      height: element.scrollHeight,
+      width: 816, // 8.5 inches at 96 DPI
+      height: Math.ceil(element.scrollHeight * (816 / element.scrollWidth)),
       logging: false
     });
 
-    const imgWidth = 210;
-    const pageHeight = 297;
+    const imgWidth = 210; // A4 width in mm
+    const pageHeight = 297; // A4 height in mm
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
     
     let PDFClass;
@@ -601,16 +617,26 @@ async function uploadPdfToStorage(pdfBlob: Blob, fileName: string, userId: strin
 // Main function to generate resume
 export async function generateResume(userId?: string): Promise<string> {
   try {
+    console.log('Starting resume generation...');
     const profileData = await fetchProfileData(userId);
+    console.log('Profile data fetched successfully');
+    
     const resumeHTML = createResumeHTML(profileData);
+    console.log('Resume HTML created');
     
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const safeName = profileData.name.replace(/[^a-zA-Z0-9]/g, '_');
     const fileName = `resume_${safeName}_${timestamp}.pdf`;
     
+    console.log('Generating PDF...');
     const pdfBlob = await generatePDFFromHTML(resumeHTML, fileName);
-    const { publicUrl, filePath } = await uploadPdfToStorage(pdfBlob, fileName, profileData.user_id);
+    console.log('PDF generated successfully');
     
+    console.log('Uploading to storage...');
+    const { publicUrl, filePath } = await uploadPdfToStorage(pdfBlob, fileName, profileData.user_id);
+    console.log('PDF uploaded successfully');
+    
+    // Update profile with resume URL
     const { error: updateError } = await supabase
       .from('profiles')
       .update({ 
@@ -626,6 +652,7 @@ export async function generateResume(userId?: string): Promise<string> {
     return `/resume : ${publicUrl}`;
     
   } catch (error) {
+    console.error('Resume generation error:', error);
     return `/resume : Error - ${error instanceof Error ? error.message : 'Unknown error occurred'}`;
   }
 }
@@ -653,7 +680,12 @@ export function previewResumeHTML(userId?: string): void {
           <head>
             <title>Resume Preview - ${profileData.name}</title>
             <style>
-              body { margin: 0; padding: 20px; font-family: 'Times New Roman', Times, serif; background: #f5f5f5; }
+              body { 
+                margin: 0; 
+                padding: 20px; 
+                font-family: 'Times New Roman', serif; 
+                background: #f5f5f5; 
+              }
             </style>
           </head>
           <body>
@@ -675,6 +707,7 @@ export async function generateAndDownloadResume(userId?: string): Promise<string
   }
 }
 
+// Global type declarations
 declare global {
   interface Window {
     jsPDF: any;

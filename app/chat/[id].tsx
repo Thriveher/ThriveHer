@@ -24,18 +24,18 @@ import { processWithGroq } from '../api/groqapi';
 import { StatusBar } from 'expo-status-bar';
 import * as Google from 'expo-auth-session/providers/google';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import JobDetailCard from '../components/JobCard'; // Add this line
+import JobDetailCard from '../components/JobCard';
 import ResumeCard from '../components/ResumeCard'; 
 import CommunityCard from '../components/CommunityCard';
 import JobPortalsCard from '../components/JobPortalCard';
-import CourseCard from '../components/CourseCard'; // New import for CourseCard
+import CourseCard from '../components/CourseCard';
 import VoiceRecordingOverlay from '../components/Voice'
 
 
 // Hardcoded Supabase credentials
 const SUPABASE_URL = 'https://ibwjjwzomoyhkxugmmmw.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlid2pqd3pvbW95aGt4dWdtbW13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ4NzkwODgsImV4cCI6MjA2MDQ1NTA4OH0.RmnNBQh_1KJo0TgCjs72aBoxWoOsd_vWjNeIHRfVXac';
-const FALLBACK_USER_ID = 'demo-user-123'; // Fallback user ID for the demo
+const FALLBACK_USER_ID = 'demo-user-123';
 
 // Types
 export interface Message {
@@ -43,8 +43,8 @@ export interface Message {
   content: string;
   is_user_message: boolean;
   timestamp: string;
-  isJobSearch?: boolean; // Flag to identify job search messages
-  jobData?: any[]; // Note: this can't be null, only undefined or an array
+  isJobSearch?: boolean;
+  jobData?: any[];
 }
 
 // Command suggestions interface
@@ -76,14 +76,20 @@ const ChatScreen = () => {
   const [userId, setUserId] = useState<string>(FALLBACK_USER_ID);
   const [isVoiceOverlayOpen, setIsVoiceOverlayOpen] = useState<boolean>(false);
   
+  // Scroll management state
+  const [isUserScrolling, setIsUserScrolling] = useState<boolean>(false);
+  const [isNearBottom, setIsNearBottom] = useState<boolean>(true);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState<boolean>(true);
+  const [isInitialLoad, setIsInitialLoad] = useState<boolean>(true);
+  
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Get Google user ID from session
   useEffect(() => {
     const getUserInfo = async () => {
       try {
-        // Try to get Google user ID from AsyncStorage
         const googleUserInfo = await AsyncStorage.getItem('googleUserInfo');
         if (googleUserInfo) {
           const userInfo = JSON.parse(googleUserInfo);
@@ -93,7 +99,6 @@ const ChatScreen = () => {
         }
       } catch (error) {
         console.log('Error retrieving Google user info:', error);
-        // Fall back to demo user ID
       }
     };
     
@@ -112,11 +117,14 @@ const ChatScreen = () => {
   const loadChatMessages = async () => {
     try {
       setLoading(true);
-      // Pass only the chatId to fetchChatMessages (fix for error #1)
       const { messages: chatMessages, context: chatContext } = await fetchChatMessages(chatId);
       
       setMessages(chatMessages);
       setContext(chatContext || '');
+      
+      // Mark that we should auto-scroll after initial load
+      setShouldAutoScroll(true);
+      setIsInitialLoad(true);
     } catch (error) {
       console.error('Failed to load chat messages:', error);
       Alert.alert(
@@ -125,6 +133,67 @@ const ChatScreen = () => {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Handle scroll events to detect user scrolling
+  const handleScroll = (event) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const isAtBottom = contentOffset.y + layoutMeasurement.height >= contentSize.height - 50;
+    
+    setIsNearBottom(isAtBottom);
+    
+    // If user scrolls up and we're not at bottom, disable auto-scroll
+    if (!isAtBottom && !isInitialLoad) {
+      setIsUserScrolling(true);
+      setShouldAutoScroll(false);
+    }
+    
+    // If user scrolls back to bottom, re-enable auto-scroll
+    if (isAtBottom && isUserScrolling) {
+      setShouldAutoScroll(true);
+      setIsUserScrolling(false);
+    }
+  };
+
+  // Handle when user starts scrolling
+  const handleScrollBeginDrag = () => {
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+    setIsUserScrolling(true);
+    setIsInitialLoad(false);
+  };
+
+  // Handle when user stops scrolling
+  const handleScrollEndDrag = () => {
+    // Set a timeout to detect when user has stopped interacting
+    scrollTimeoutRef.current = setTimeout(() => {
+      setIsUserScrolling(false);
+    }, 1000);
+  };
+
+  // Smart scroll function that only scrolls when appropriate
+  const scrollToBottomIfNeeded = () => {
+    if (flatListRef.current && (shouldAutoScroll || isInitialLoad)) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: !isInitialLoad });
+        if (isInitialLoad) {
+          setIsInitialLoad(false);
+        }
+      }, 100);
+    }
+  };
+
+  // Handle content size change (when new messages are added)
+  const handleContentSizeChange = () => {
+    scrollToBottomIfNeeded();
+  };
+
+  // Handle layout change (when component is first rendered)
+  const handleLayout = () => {
+    if (isInitialLoad) {
+      scrollToBottomIfNeeded();
     }
   };
 
@@ -137,6 +206,10 @@ const ChatScreen = () => {
       setInputText('');
     }
     
+    // Re-enable auto-scroll when user sends a message
+    setShouldAutoScroll(true);
+    setIsUserScrolling(false);
+    
     // Optimistically add user message to the UI
     const tempUserMessageId = `temp-${Date.now()}`;
     const newUserMessage: Message = {
@@ -147,25 +220,21 @@ const ChatScreen = () => {
     };
     
     setMessages(prevMessages => [...prevMessages, newUserMessage]);
-    scrollToBottom();
     
     // Show typing indicator
     setSending(true);
     
     try {
-      // Process with Groq API using correct parameters (fix for error #2)
       const groqResponse = await processWithGroq({
         message: messageToSend,
         chatId,
         chatName: decodeURIComponent(chatName),
         context,
-        userId // Using the Google user ID if available
+        userId
       });
       
-      // Add bot response to messages
       const { botResponse, updatedContext } = groqResponse;
       
-      // Save both messages to the database with correct parameters (fix for error #3)
       await sendMessage(
         chatId, 
         messageToSend, 
@@ -173,7 +242,6 @@ const ChatScreen = () => {
         updatedContext
       );
       
-      // Update messages with the actual response
       const botMessage: Message = {
         id: `bot-${Date.now()}`,
         content: botResponse,
@@ -187,7 +255,6 @@ const ChatScreen = () => {
         botMessage
       ]);
       
-      // Update context
       setContext(updatedContext);
     } catch (error) {
       console.error('Error sending message:', error);
@@ -195,76 +262,67 @@ const ChatScreen = () => {
         'Error',
         'Failed to send message. Please try again.'
       );
-      // Remove the temporary user message if there was an error
       setMessages(prevMessages => 
         prevMessages.filter(msg => msg.id !== tempUserMessageId)
       );
     } finally {
       setSending(false);
-      scrollToBottom();
     }
   };
 
   // Handle key press for Enter key to send message
   const handleKeyPress = (e) => {
     if (e.nativeEvent.key === 'Enter' && !e.nativeEvent.shiftKey) {
-      e.preventDefault(); // Prevent default to avoid new line
+      e.preventDefault();
       if (inputText.trim() && !sending) {
         handleSendMessage();
       }
     }
   };
 
-  const scrollToBottom = () => {
-    if (flatListRef.current && messages.length > 0) {
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    }
-  };
-
   const handleOpenVoiceRecording = () => {
-    // Check if audio recording is supported (you'll need to implement this check)
     setIsVoiceOverlayOpen(true);
   };
 
-  // Modified to directly send the transcribed message instead of putting it in input
   const handleTranscriptionComplete = (transcribedText: string) => {
     setIsVoiceOverlayOpen(false);
     
-    // Directly send the transcribed text as a message
     if (transcribedText.trim()) {
       handleSendMessage(transcribedText.trim());
     }
   };
 
+  // Scroll to bottom button handler
+  const handleScrollToBottom = () => {
+    setShouldAutoScroll(true);
+    setIsUserScrolling(false);
+    if (flatListRef.current) {
+      flatListRef.current.scrollToEnd({ animated: true });
+    }
+  };
+
   const renderMessage = ({ item }: { item: Message }) => {
-    // Check if the message contains /jobdata command
+    // Check if the message contains various commands
     if (!item.is_user_message && item.content.toLowerCase().includes('/jobdata')) {
       return <JobDetailCard message={item.content} />;
     }
     
-    // Check if the message contains /resume command
     if (!item.is_user_message && item.content.toLowerCase().includes('/resume')) {
       return <ResumeCard message={item.content} />;
     }
     
-    // Check if the message contains /community command
     if (!item.is_user_message && item.content.toLowerCase().includes('/community')) {
       return <CommunityCard message={item.content} />;
     }
     
-    // Check if the message contains /jobportals command
     if (!item.is_user_message && item.content.toLowerCase().includes('/jobportals')) {
       return <JobPortalsCard message={item.content} />;
     }
     
-    // Check if the message contains /course command
     if (!item.is_user_message && item.content.toLowerCase().includes('/course')) {
       return <CourseCard message={item.content} />;
     }
     
-    // For all other messages, render normal message bubbles
     return (
       <View>
         <MessageBubble 
@@ -277,9 +335,17 @@ const ChatScreen = () => {
   };
 
   const handleBackPress = () => {
-    // Changed to navigate to /chat instead of using router.back()
     router.push('/chat');
   };
+
+  // Clean up timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, []);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -305,15 +371,36 @@ const ChatScreen = () => {
             <ActivityIndicator size="large" color="#49654E" />
           </View>
         ) : (
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            renderItem={renderMessage}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.messageList}
-            onContentSizeChange={scrollToBottom}
-            onLayout={scrollToBottom}
-          />
+          <View style={styles.chatContainer}>
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              renderItem={renderMessage}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.messageList}
+              onContentSizeChange={handleContentSizeChange}
+              onLayout={handleLayout}
+              onScroll={handleScroll}
+              onScrollBeginDrag={handleScrollBeginDrag}
+              onScrollEndDrag={handleScrollEndDrag}
+              scrollEventThrottle={16}
+              maintainVisibleContentPosition={{
+                minIndexForVisible: 0,
+                autoscrollToTopThreshold: 10,
+              }}
+            />
+            
+            {/* Scroll to bottom button - only show when user has scrolled up */}
+            {!isNearBottom && !isInitialLoad && (
+              <TouchableOpacity 
+                style={styles.scrollToBottomButton}
+                onPress={handleScrollToBottom}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons name="keyboard-arrow-down" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+            )}
+          </View>
         )}
 
         <View style={styles.inputContainer}>
@@ -411,9 +498,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  chatContainer: {
+    flex: 1,
+    position: 'relative',
+  },
   messageList: {
     padding: 16,
     paddingBottom: 8,
+  },
+  scrollToBottomButton: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    backgroundColor: '#8BA889',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
   },
   inputContainer: {
     flexDirection: 'row',
@@ -445,9 +552,18 @@ const styles = StyleSheet.create({
   sendButtonDisabled: {
     backgroundColor: '#8BA88980',
   },
+  voiceButton: {
+    backgroundColor: '#8BA889',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
   commandsContainer: {
     position: 'absolute',
-    bottom: 70, // Position above the input box
+    bottom: 70,
     left: 12,
     right: 12,
     backgroundColor: '#FFFFFF',
@@ -641,63 +757,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666666',
   },
-  voiceButton: {
-  backgroundColor: '#8BA889',
-  width: 40,
-  height: 40,
-  borderRadius: 20,
-  justifyContent: 'center',
-  alignItems: 'center',
-  marginLeft: 8,
-},
 });
-
-
-// Add these styles to your styles.ts file
-const additionalStyles = {
-  jobCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  jobApplyButton: {
-    backgroundColor: '#49654E',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  jobApplyText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  applyButtonLarge: {
-    backgroundColor: '#49654E',
-    paddingVertical: 12, 
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 24,
-    marginBottom: 8,
-  },
-  applyButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 16,
-  },
-  applyButtonIcon: {
-    marginRight: 8,
-  }
-};
 
 export default ChatScreen;

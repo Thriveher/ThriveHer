@@ -29,20 +29,20 @@ const MessageBubble = ({
 
   // Convert text with newlines to proper React Native format
   const convertNewlinesToElements = (text: string): (string | JSX.Element)[] => {
+    if (!text.includes('\n')) {
+      return [text];
+    }
+
     const parts = text.split('\n');
     const result: (string | JSX.Element)[] = [];
     
     parts.forEach((part, index) => {
       if (index > 0) {
-        // Add newline element before each part (except first)
+        // Add actual newline character for React Native
         result.push(<Text key={`nl-${index}`}>{'\n'}</Text>);
       }
-      if (part.length > 0) {
-        result.push(part);
-      } else if (index > 0 && index < parts.length - 1) {
-        // Handle empty lines in the middle
-        result.push(' ');
-      }
+      // Always add the part, even if it's empty (to preserve empty lines)
+      result.push(part);
     });
     
     return result;
@@ -51,6 +51,7 @@ const MessageBubble = ({
   // Simple markdown parser for basic formatting
   const parseMarkdown = (text: string) => {
     const elements: JSX.Element[] = [];
+    // Split by actual newline characters first
     const lines = text.split('\n');
     let key = 0;
 
@@ -147,11 +148,11 @@ const MessageBubble = ({
           </Text>
         );
       }
-      // Handle empty lines - just add a small space to maintain structure
-      else if (i > 0 && i < lines.length - 1) {
+      // Handle empty lines - add a text element with just a space to maintain structure
+      else {
         elements.push(
-          <Text key={key++} style={styles.normalText}>
-            {' '}
+          <Text key={key++} style={styles.emptyLine}>
+            {'\u00A0'}
           </Text>
         );
       }
@@ -162,12 +163,12 @@ const MessageBubble = ({
 
   // Parse inline markdown with proper link handling (both markdown links and plain URLs)
   const parseInlineMarkdown = (text: string): JSX.Element => {
-    // First handle newlines in the text
+    // Handle newlines in the text first
     if (text.includes('\n')) {
       const parts = convertNewlinesToElements(text);
       const processedParts = parts.map((part, index) => {
         if (typeof part === 'string') {
-          return <Text key={index}>{parseInlineMarkdownSingleLine(part)}</Text>;
+          return parseInlineMarkdownSingleLine(part);
         }
         return part; // JSX newline element
       });
@@ -398,7 +399,23 @@ const MessageBubble = ({
   // Helper function to properly render plain text with newlines
   const renderPlainTextWithNewlines = (text: string) => {
     const elements = convertNewlinesToElements(text);
-    return <Text>{elements}</Text>;
+    return (
+      <Text>
+        {elements.map((element, index) => {
+          if (typeof element === 'string') {
+            return (
+              <Text key={index} style={[
+                styles.messageText,
+                isUser ? styles.userText : styles.botText
+              ]}>
+                {element}
+              </Text>
+            );
+          }
+          return element;
+        })}
+      </Text>
+    );
   };
 
   return (
@@ -415,12 +432,7 @@ const MessageBubble = ({
             {parseMarkdown(message)}
           </View>
         ) : (
-          <Text style={[
-            styles.messageText,
-            isUser ? styles.userText : styles.botText
-          ]}>
-            {renderPlainTextWithNewlines(message)}
-          </Text>
+          renderPlainTextWithNewlines(message)
         )}
       </View>
       <Text style={[
@@ -497,6 +509,11 @@ const styles = StyleSheet.create({
     color: '#253528',
     marginBottom: 4,
     textAlign: 'justify',
+  },
+  emptyLine: {
+    fontSize: 16,
+    lineHeight: 11,
+    color: '#253528',
   },
   h1: {
     fontSize: 20,

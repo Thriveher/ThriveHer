@@ -50,18 +50,20 @@ interface ComponentState {
   detectedLanguage: string | null;
 }
 
+const initialState: ComponentState = {
+  recordingStatus: 'idle',
+  error: null,
+  recordingTime: 0,
+  transcriptionText: null,
+  detectedLanguage: null
+};
+
 export default function VoiceRecordingOverlay({ 
   isOpen, 
   onClose, 
   onTranscriptionComplete 
 }: VoiceRecordingOverlayProps) {
-  const [state, setState] = useState<ComponentState>({
-    recordingStatus: 'idle',
-    error: null,
-    recordingTime: 0,
-    transcriptionText: null,
-    detectedLanguage: null
-  });
+  const [state, setState] = useState<ComponentState>(initialState);
 
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -82,9 +84,12 @@ export default function VoiceRecordingOverlay({
     }
   };
 
-  // Entrance animation
+  // Reset state when component opens
   useEffect(() => {
     if (isOpen) {
+      setState(initialState);
+      
+      // Entrance animation
       Animated.parallel([
         Animated.spring(scaleAnim, {
           toValue: 1,
@@ -185,14 +190,6 @@ export default function VoiceRecordingOverlay({
       if (getRecordingStatus() === 'recording') {
         stopRecording().catch(console.error);
       }
-      // Reset state
-      setState({
-        recordingStatus: 'idle',
-        error: null,
-        recordingTime: 0,
-        transcriptionText: null,
-        detectedLanguage: null
-      });
     }
   }, [isOpen]);
 
@@ -252,19 +249,9 @@ export default function VoiceRecordingOverlay({
           return;
         }
         
-        // Success - store result
-        setState(prev => ({
-          ...prev,
-          transcriptionText: transcribedText,
-          detectedLanguage: result.languageName || result.language,
-          recordingStatus: 'completed'
-        }));
-        
-        // Pass transcription to parent and close
-        setTimeout(() => {
-          onTranscriptionComplete(transcribedText);
-          onClose();
-        }, 1000); // Brief delay to show success state
+        // Success - immediately pass transcription to parent and close
+        onTranscriptionComplete(transcribedText);
+        onClose();
         
       } else {
         setState(prev => ({ 
@@ -309,7 +296,7 @@ export default function VoiceRecordingOverlay({
     
     if (state.recordingStatus === 'recording') {
       handleStopRecording();
-    } else if (['idle', 'error', 'completed'].includes(state.recordingStatus)) {
+    } else if (['idle', 'error'].includes(state.recordingStatus)) {
       handleStartRecording();
     }
   };
@@ -371,14 +358,6 @@ export default function VoiceRecordingOverlay({
           icon: 'hourglass' as const,
           text: 'Processing audio...',
           buttonStyle: styles.processingButton,
-          showPulse: false,
-          disabled: true
-        };
-      case 'completed':
-        return {
-          icon: 'checkmark' as const,
-          text: 'Transcription completed!',
-          buttonStyle: styles.completedButton,
           showPulse: false,
           disabled: true
         };
@@ -456,18 +435,6 @@ export default function VoiceRecordingOverlay({
           </View>
         )}
 
-        {state.recordingStatus === 'completed' && state.transcriptionText && (
-          <View style={styles.successContainer}>
-            <View style={styles.successIconContainer}>
-              <Ionicons name="checkmark-circle" size={16} color={COLORS.SUCCESS_GREEN} />
-            </View>
-            <Text style={styles.successText}>Recording transcribed successfully!</Text>
-            {state.detectedLanguage && (
-              <Text style={styles.languageText}>Detected: {state.detectedLanguage}</Text>
-            )}
-          </View>
-        )}
-
         <View style={styles.recordingArea}>
           {state.recordingStatus === 'recording' ? (
             <>
@@ -484,18 +451,16 @@ export default function VoiceRecordingOverlay({
               <View style={styles.readyStateContainer}>
                 <View style={styles.microphoneIconContainer}>
                   <Ionicons 
-                    name={state.recordingStatus === 'completed' ? "checkmark-circle-outline" : "mic-outline"} 
+                    name="mic-outline"
                     size={48} 
-                    color={state.recordingStatus === 'completed' ? COLORS.SUCCESS_GREEN : COLORS.SOFT_GREEN} 
+                    color={COLORS.SOFT_GREEN} 
                   />
                 </View>
                 <Text style={styles.readyTitle}>
-                  {state.recordingStatus === 'completed' ? 'Transcription Complete' : 
-                   state.recordingStatus === 'error' ? 'Ready to Retry' : 'Ready to Record'}
+                  {state.recordingStatus === 'error' ? 'Ready to Retry' : 'Ready to Record'}
                 </Text>
                 <Text style={styles.readySubtitle}>
-                  {state.recordingStatus === 'completed' ? 'Your voice has been converted to text' :
-                   state.recordingStatus === 'error' ? 'Tap the microphone to try again' :
+                  {state.recordingStatus === 'error' ? 'Tap the microphone to try again' :
                    'Tap the microphone to start recording'}
                 </Text>
               </View>
@@ -643,33 +608,6 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 18,
   },
-  successContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: `${COLORS.SUCCESS_GREEN}08`,
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: `${COLORS.SUCCESS_GREEN}15`,
-  },
-  successIconContainer: {
-    marginRight: 8,
-    marginTop: 1,
-  },
-  successText: {
-    color: COLORS.SUCCESS_GREEN,
-    fontSize: 13,
-    fontWeight: '500',
-    flex: 1,
-    lineHeight: 18,
-  },
-  languageText: {
-    color: COLORS.SUCCESS_GREEN,
-    fontSize: 11,
-    fontWeight: '400',
-    marginTop: 2,
-  },
   recordingArea: {
     alignItems: 'center',
     paddingVertical: 20,
@@ -745,9 +683,6 @@ const styles = StyleSheet.create({
   processingButton: {
     backgroundColor: COLORS.MEDIUM_OLIVE,
     opacity: 0.7,
-  },
-  completedButton: {
-    backgroundColor: COLORS.SUCCESS_GREEN,
   },
   instructionText: {
     fontSize: 13,

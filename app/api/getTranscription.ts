@@ -1,4 +1,4 @@
-// voiceTranscriptionAPI.ts
+// voiceTranscriptionAPI.ts - Optimized for Indian Languages + English
 
 // Hardcoded API key (replace with your actual Groq API key)
 const GROQ_API_KEY = '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';
@@ -9,6 +9,7 @@ export interface TranscriptionResult {
   text?: string;
   language?: string; // Detected language code
   languageName?: string; // Human-readable language name
+  isIndianLanguage?: boolean; // Whether detected language is Indian
   confidence?: number; // Confidence score if available
   duration?: number; // Duration of audio in seconds
   error?: string;
@@ -17,10 +18,29 @@ export interface TranscriptionResult {
 export interface VoiceRecordingOptions {
   maxDuration?: number; // in milliseconds, default 30000 (30 seconds)
   autoStop?: boolean; // Auto-stop after maxDuration, default true
+  preferredLanguage?: SupportedLanguageCode; // Hint for expected language
   onStatusChange?: (status: RecordingStatus) => void; // Callback for status updates
 }
 
 export type RecordingStatus = 'idle' | 'requesting-permission' | 'recording' | 'stopping' | 'processing' | 'completed' | 'error';
+
+// Supported Indian languages plus English
+export type SupportedLanguageCode = 
+  | 'en'   // English
+  | 'hi'   // Hindi
+  | 'bn'   // Bengali
+  | 'te'   // Telugu
+  | 'mr'   // Marathi
+  | 'ta'   // Tamil
+  | 'gu'   // Gujarati
+  | 'kn'   // Kannada
+  | 'ml'   // Malayalam
+  | 'or'   // Odia
+  | 'pa'   // Punjabi
+  | 'as'   // Assamese
+  | 'ur'   // Urdu
+  | 'ne'   // Nepali
+  | 'sa';  // Sanskrit
 
 // Global recorder management
 let globalMediaRecorder: MediaRecorder | null = null;
@@ -30,7 +50,7 @@ let statusCallback: ((status: RecordingStatus) => void) | null = null;
 
 /**
  * Records audio from user's microphone and transcribes it using Groq's Whisper API
- * with automatic language detection for all supported languages
+ * Optimized for Indian languages and English
  * @param options - Optional configuration for recording
  * @returns Promise<TranscriptionResult> - The transcribed text, detected language, or error
  */
@@ -40,6 +60,7 @@ export async function transcribeVoice(
   const {
     maxDuration = 30000, // 30 seconds default
     autoStop = true,
+    preferredLanguage,
     onStatusChange
   } = options;
 
@@ -56,7 +77,7 @@ export async function transcribeVoice(
     // Clean up any existing recording
     await stopRecording();
 
-    // Request microphone access with optimized settings for speech
+    // Request microphone access with settings optimized for multilingual speech
     globalStream = await navigator.mediaDevices.getUserMedia({ 
       audio: {
         echoCancellation: true,
@@ -67,11 +88,11 @@ export async function transcribeVoice(
       } 
     });
 
-    // Use audio/wav for better compatibility with Whisper
-    const mimeType = getSupportedMimeType();
+    // Use the best supported format for Indian language transcription
+    const mimeType = getOptimalMimeType();
     globalMediaRecorder = new MediaRecorder(globalStream, { 
       mimeType,
-      audioBitsPerSecond: 64000 // Optimal bitrate for speech
+      audioBitsPerSecond: 64000 // Good balance for multilingual speech
     });
 
     const audioChunks: Blob[] = [];
@@ -113,7 +134,6 @@ export async function transcribeVoice(
           return;
         }
         
-        // Convert to wav format for better Whisper compatibility
         const blob = new Blob(audioChunks, { type: mimeType });
         resolve(blob);
       };
@@ -129,7 +149,7 @@ export async function transcribeVoice(
     setRecordingStatus('processing');
 
     // Convert audio blob to transcription
-    const transcription = await transcribeAudioBlob(audioBlob);
+    const transcription = await transcribeAudioBlob(audioBlob, preferredLanguage);
     
     setRecordingStatus('completed');
     return transcription;
@@ -204,17 +224,16 @@ function setRecordingStatus(status: RecordingStatus): void {
 }
 
 /**
- * Get the best supported MIME type for recording
- * @returns string - Optimal MIME type for Whisper
+ * Get the optimal MIME type for Indian language transcription
+ * @returns string - Best MIME type for Whisper with Indian languages
  */
-function getSupportedMimeType(): string {
-  // Whisper works best with these formats, in order of preference
+function getOptimalMimeType(): string {
+  // Whisper works best with these formats for multilingual content
   const preferredTypes = [
     'audio/wav',
     'audio/webm;codecs=opus',
     'audio/webm',
-    'audio/mp4',
-    'audio/ogg;codecs=opus'
+    'audio/mp4'
   ];
 
   for (const type of preferredTypes) {
@@ -223,33 +242,39 @@ function getSupportedMimeType(): string {
     }
   }
 
-  // Fallback to default
-  return 'audio/webm';
+  return 'audio/webm'; // Fallback
 }
 
 /**
- * Transcribe an audio blob using Groq's Whisper API with automatic language detection
+ * Transcribe an audio blob using Groq's Whisper API
+ * Optimized for Indian languages and English
  * @param audioBlob - The audio data to transcribe
+ * @param preferredLanguage - Optional language hint
  * @returns Promise<TranscriptionResult> - The transcribed text, detected language, or error
  */
-async function transcribeAudioBlob(audioBlob: Blob): Promise<TranscriptionResult> {
+async function transcribeAudioBlob(
+  audioBlob: Blob, 
+  preferredLanguage?: SupportedLanguageCode
+): Promise<TranscriptionResult> {
   try {
     // Prepare form data for the API request
     const formData = new FormData();
     
-    // Convert blob to appropriate format if needed
-    const processedBlob = await convertAudioIfNeeded(audioBlob);
-    formData.append('file', processedBlob, getOptimalFileName(processedBlob.type));
+    formData.append('file', audioBlob, getFileName(audioBlob.type));
     
     // Use the latest Whisper model available on Groq
     formData.append('model', 'whisper-large-v3-turbo');
     
-    // Enable automatic language detection by not specifying language
-    // Whisper will auto-detect among all supported languages including Indian languages
+    // Enable verbose response to get language detection info
     formData.append('response_format', 'verbose_json');
     
-    // Optional: Set temperature for more consistent results
+    // Set temperature for consistent results with Indian languages
     formData.append('temperature', '0');
+    
+    // Add language hint if provided (helps with accuracy for Indian languages)
+    if (preferredLanguage) {
+      formData.append('language', preferredLanguage);
+    }
 
     // Make API request to Groq
     const response = await fetch(GROQ_API_URL, {
@@ -275,19 +300,27 @@ async function transcribeAudioBlob(audioBlob: Blob): Promise<TranscriptionResult
     const result = await response.json();
     
     if (!result.text || result.text.trim().length === 0) {
-      throw new Error('No speech detected in audio. Please try speaking more clearly.');
+      throw new Error('No speech detected. Please try speaking more clearly.');
     }
 
     const detectedLanguage = result.language || 'unknown';
-    const languageName = getLanguageName(detectedLanguage);
+    
+    // Validate that detected language is supported
+    if (!isSupportedLanguage(detectedLanguage)) {
+      console.warn(`Detected language ${detectedLanguage} is not in our supported Indian languages + English set`);
+    }
+
+    const languageName = getIndianLanguageName(detectedLanguage);
+    const isIndian = isIndianLanguage(detectedLanguage);
 
     return {
       success: true,
       text: result.text.trim(),
       language: detectedLanguage,
       languageName: languageName,
+      isIndianLanguage: isIndian,
       duration: result.duration,
-      confidence: result.confidence // If provided by the API
+      confidence: result.confidence
     };
 
   } catch (error) {
@@ -299,25 +332,13 @@ async function transcribeAudioBlob(audioBlob: Blob): Promise<TranscriptionResult
 }
 
 /**
- * Convert audio blob to optimal format for Whisper if needed
- * @param audioBlob - Original audio blob
- * @returns Promise<Blob> - Processed audio blob
- */
-async function convertAudioIfNeeded(audioBlob: Blob): Promise<Blob> {
-  // For now, return as-is. In a full implementation, you might want to
-  // convert to WAV or other optimal format using Web Audio API
-  return audioBlob;
-}
-
-/**
- * Get optimal filename based on MIME type
+ * Get filename based on MIME type
  * @param mimeType - MIME type of the audio
  * @returns string - Filename with appropriate extension
  */
-function getOptimalFileName(mimeType: string): string {
+function getFileName(mimeType: string): string {
   if (mimeType.includes('wav')) return 'audio.wav';
   if (mimeType.includes('mp4')) return 'audio.mp4';
-  if (mimeType.includes('ogg')) return 'audio.ogg';
   if (mimeType.includes('webm')) return 'audio.webm';
   return 'audio.wav'; // Default
 }
@@ -336,11 +357,15 @@ export function isAudioRecordingSupported(): boolean {
 }
 
 /**
- * Alternative function that accepts an audio file directly (for file uploads)
+ * Transcribe an uploaded audio file (alternative to voice recording)
  * @param audioFile - File object containing audio data
+ * @param preferredLanguage - Optional language hint
  * @returns Promise<TranscriptionResult> - The transcribed text, detected language, or error
  */
-export async function transcribeAudioFile(audioFile: File): Promise<TranscriptionResult> {
+export async function transcribeAudioFile(
+  audioFile: File, 
+  preferredLanguage?: SupportedLanguageCode
+): Promise<TranscriptionResult> {
   try {
     if (!audioFile.type.startsWith('audio/')) {
       throw new Error('File must be an audio file');
@@ -352,7 +377,7 @@ export async function transcribeAudioFile(audioFile: File): Promise<Transcriptio
       throw new Error('Audio file is too large. Maximum size is 25MB.');
     }
 
-    const transcription = await transcribeAudioBlob(audioFile);
+    const transcription = await transcribeAudioBlob(audioFile, preferredLanguage);
     return transcription;
 
   } catch (error) {
@@ -364,101 +389,109 @@ export async function transcribeAudioFile(audioFile: File): Promise<Transcriptio
 }
 
 /**
- * Get human-readable language name from language code
- * Supports all languages that Whisper can detect including Indian languages
- * @param languageCode - ISO language code (e.g., 'en', 'hi', 'ta')
+ * Get human-readable language name for Indian languages + English
+ * @param languageCode - ISO language code
  * @returns string - Human-readable language name
  */
-export function getLanguageName(languageCode: string): string {
-  const languageNames: { [key: string]: string } = {
+export function getIndianLanguageName(languageCode: string): string {
+  const indianLanguageNames: { [key: string]: string } = {
     // English
     'en': 'English',
     
-    // Indian Languages (officially supported by Whisper)
-    'hi': 'Hindi', // हिन्दी
-    'bn': 'Bengali', // বাংলা
-    'te': 'Telugu', // తెలుగు
-    'mr': 'Marathi', // मराठी
-    'ta': 'Tamil', // தமிழ்
-    'gu': 'Gujarati', // ગુજરાતી
-    'kn': 'Kannada', // ಕನ್ನಡ
-    'ml': 'Malayalam', // മലയാളം
-    'or': 'Odia', // ଓଡ଼ିଆ
-    'pa': 'Punjabi', // ਪੰਜਾਬੀ
-    'as': 'Assamese', // অসমীয়া
-    'ne': 'Nepali', // नेपाली
-    'si': 'Sinhala', // සිංහල
-    'ur': 'Urdu', // اردو
-    'sa': 'Sanskrit', // संस्कृत
-    
-    // Other major languages supported by Whisper
-    'ar': 'Arabic',
-    'zh': 'Chinese',
-    'fr': 'French',
-    'de': 'German',
-    'it': 'Italian',
-    'ja': 'Japanese',
-    'ko': 'Korean',
-    'pt': 'Portuguese',
-    'ru': 'Russian',
-    'es': 'Spanish',
-    'th': 'Thai',
-    'tr': 'Turkish',
-    'vi': 'Vietnamese',
-    
-    // Additional Indian language variants
-    'bho': 'Bhojpuri',
-    'mai': 'Maithili',
-    'sd': 'Sindhi',
+    // Major Indian Languages (officially supported by Whisper)
+    'hi': 'हिन्दी (Hindi)',
+    'bn': 'বাংলা (Bengali)',
+    'te': 'తెలుగు (Telugu)',
+    'mr': 'मराठी (Marathi)',
+    'ta': 'தமிழ் (Tamil)',
+    'gu': 'ગુજરાતી (Gujarati)',
+    'kn': 'ಕನ್ನಡ (Kannada)',
+    'ml': 'മലയാളം (Malayalam)',
+    'or': 'ଓଡ଼ିଆ (Odia)',
+    'pa': 'ਪੰਜਾਬੀ (Punjabi)',
+    'as': 'অসমীয়া (Assamese)',
+    'ur': 'اردو (Urdu)',
+    'ne': 'नेपाली (Nepali)',
+    'sa': 'संस्कृत (Sanskrit)',
     
     'unknown': 'Unknown Language'
   };
 
-  const code = languageCode.toLowerCase().split('-')[0]; // Handle variants like 'hi-IN'
-  return languageNames[code] || languageNames[languageCode.toLowerCase()] || languageCode.toUpperCase();
+  const code = languageCode.toLowerCase().split('-')[0];
+  return indianLanguageNames[code] || languageCode.toUpperCase();
 }
 
 /**
- * Check if a detected language is an Indian language
+ * Check if a language code is an Indian language
  * @param languageCode - ISO language code
  * @returns boolean - Whether the language is Indian
  */
 export function isIndianLanguage(languageCode: string): boolean {
-  const indianLanguages = [
-    'hi', 'bn', 'te', 'mr', 'ta', 'gu', 'kn', 'ml', 'or', 'pa', 'as', 
-    'ne', 'si', 'ur', 'sa', 'bho', 'mai', 'sd'
+  const indianLanguageCodes = [
+    'hi', 'bn', 'te', 'mr', 'ta', 'gu', 'kn', 'ml', 'or', 'pa', 'as', 'ur', 'ne', 'sa'
   ];
   
   const code = languageCode.toLowerCase().split('-')[0];
-  return indianLanguages.includes(code);
+  return indianLanguageCodes.includes(code);
 }
 
 /**
- * Get list of all supported Indian languages plus English
+ * Check if a language code is in our supported set
+ * @param languageCode - ISO language code
+ * @returns boolean - Whether the language is supported
+ */
+export function isSupportedLanguage(languageCode: string): boolean {
+  const supportedCodes = [
+    'en', 'hi', 'bn', 'te', 'mr', 'ta', 'gu', 'kn', 'ml', 'or', 'pa', 'as', 'ur', 'ne', 'sa'
+  ];
+  
+  const code = languageCode.toLowerCase().split('-')[0];
+  return supportedCodes.includes(code);
+}
+
+/**
+ * Get list of all supported languages (Indian languages + English)
  * @returns Array of language objects with code and name
  */
-export function getSupportedLanguages(): Array<{ code: string; name: string; isIndian: boolean }> {
+export function getSupportedLanguages(): Array<{ 
+  code: SupportedLanguageCode; 
+  name: string; 
+  nativeName: string;
+  isIndian: boolean;
+  script: string;
+}> {
   return [
-    { code: 'en', name: 'English', isIndian: false },
-    { code: 'hi', name: 'Hindi', isIndian: true },
-    { code: 'bn', name: 'Bengali', isIndian: true },
-    { code: 'te', name: 'Telugu', isIndian: true },
-    { code: 'mr', name: 'Marathi', isIndian: true },
-    { code: 'ta', name: 'Tamil', isIndian: true },
-    { code: 'gu', name: 'Gujarati', isIndian: true },
-    { code: 'kn', name: 'Kannada', isIndian: true },
-    { code: 'ml', name: 'Malayalam', isIndian: true },
-    { code: 'or', name: 'Odia', isIndian: true },
-    { code: 'pa', name: 'Punjabi', isIndian: true },
-    { code: 'as', name: 'Assamese', isIndian: true },
-    { code: 'ne', name: 'Nepali', isIndian: true },
-    { code: 'si', name: 'Sinhala', isIndian: true },
-    { code: 'ur', name: 'Urdu', isIndian: true },
-    { code: 'sa', name: 'Sanskrit', isIndian: true },
-    { code: 'bho', name: 'Bhojpuri', isIndian: true },
-    { code: 'mai', name: 'Maithili', isIndian: true },
-    { code: 'sd', name: 'Sindhi', isIndian: true }
+    { code: 'en', name: 'English', nativeName: 'English', isIndian: false, script: 'Latin' },
+    { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी', isIndian: true, script: 'Devanagari' },
+    { code: 'bn', name: 'Bengali', nativeName: 'বাংলা', isIndian: true, script: 'Bengali' },
+    { code: 'te', name: 'Telugu', nativeName: 'తెలుగు', isIndian: true, script: 'Telugu' },
+    { code: 'mr', name: 'Marathi', nativeName: 'मराठी', isIndian: true, script: 'Devanagari' },
+    { code: 'ta', name: 'Tamil', nativeName: 'தமிழ்', isIndian: true, script: 'Tamil' },
+    { code: 'gu', name: 'Gujarati', nativeName: 'ગુજરાતી', isIndian: true, script: 'Gujarati' },
+    { code: 'kn', name: 'Kannada', nativeName: 'ಕನ್ನಡ', isIndian: true, script: 'Kannada' },
+    { code: 'ml', name: 'Malayalam', nativeName: 'മലയാളം', isIndian: true, script: 'Malayalam' },
+    { code: 'or', name: 'Odia', nativeName: 'ଓଡ଼ିଆ', isIndian: true, script: 'Odia' },
+    { code: 'pa', name: 'Punjabi', nativeName: 'ਪੰਜਾਬੀ', isIndian: true, script: 'Gurmukhi' },
+    { code: 'as', name: 'Assamese', nativeName: 'অসমীয়া', isIndian: true, script: 'Bengali' },
+    { code: 'ur', name: 'Urdu', nativeName: 'اردو', isIndian: true, script: 'Arabic' },
+    { code: 'ne', name: 'Nepali', nativeName: 'नेपाली', isIndian: true, script: 'Devanagari' },
+    { code: 'sa', name: 'Sanskrit', nativeName: 'संस्कृत', isIndian: true, script: 'Devanagari' }
   ];
+}
+
+/**
+ * Get Indian languages only (excluding English)
+ * @returns Array of Indian language objects
+ */
+export function getIndianLanguages(): Array<{ 
+  code: SupportedLanguageCode; 
+  name: string; 
+  nativeName: string;
+  script: string;
+}> {
+  return getSupportedLanguages()
+    .filter(lang => lang.isIndian)
+    .map(({ code, name, nativeName, script }) => ({ code, name, nativeName, script }));
 }
 
 /**
@@ -489,4 +522,49 @@ export function isValidAudioFile(file: File): boolean {
     file.type === format || 
     file.type.startsWith(format.split('/')[0] + '/')
   );
+}
+
+/**
+ * Get language statistics from transcription results
+ * @param results - Array of transcription results
+ * @returns Object with language usage statistics
+ */
+export function getLanguageStats(results: TranscriptionResult[]): {
+  totalTranscriptions: number;
+  englishCount: number;
+  indianLanguageCount: number;
+  languageBreakdown: { [key: string]: number };
+  mostUsedLanguage: string;
+} {
+  const stats = {
+    totalTranscriptions: results.length,
+    englishCount: 0,
+    indianLanguageCount: 0,
+    languageBreakdown: {} as { [key: string]: number },
+    mostUsedLanguage: 'none'
+  };
+
+  results.forEach(result => {
+    if (result.success && result.language) {
+      const lang = result.language;
+      stats.languageBreakdown[lang] = (stats.languageBreakdown[lang] || 0) + 1;
+      
+      if (lang === 'en') {
+        stats.englishCount++;
+      } else if (isIndianLanguage(lang)) {
+        stats.indianLanguageCount++;
+      }
+    }
+  });
+
+  // Find most used language
+  let maxCount = 0;
+  Object.entries(stats.languageBreakdown).forEach(([lang, count]) => {
+    if (count > maxCount) {
+      maxCount = count;
+      stats.mostUsedLanguage = getIndianLanguageName(lang);
+    }
+  });
+
+  return stats;
 }

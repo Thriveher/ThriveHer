@@ -10,49 +10,49 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
-interface JobPortalData {
+interface CourseWebsiteData {
   name: string;
   description: string;
   link: string;
   category: string;
 }
 
-interface JobPortalsCardProps {
+interface CourseWebsitesCardProps {
   message: string;
 }
 
-const JobPortalsCard: React.FC<JobPortalsCardProps> = ({ message }) => {
-  // Hardcoded job portals data
-  const jobPortals: JobPortalData[] = [
+const CourseWebsitesCard: React.FC<CourseWebsitesCardProps> = ({ message }) => {
+  // Hardcoded course websites data
+  const courseWebsites: CourseWebsiteData[] = [
     {
       name: "Herkey",
-      description: "AI-powered job matching platform for tech professionals",
+      description: "AI-powered learning platform with personalized course recommendations",
       link: "https://herkey.app",
       category: "Tech"
     },
     {
-      name: "LinkedIn Jobs",
-      description: "Professional network with comprehensive job listings",
-      link: "https://linkedin.com/jobs",
-      category: "General"
+      name: "Naukri.com",
+      description: "Professional courses and skill development programs",
+      link: "https://naukri.com/learning",
+      category: "Professional"
     },
     {
-      name: "Indeed",
-      description: "World's largest job search engine with millions of listings",
-      link: "https://indeed.com",
-      category: "General"
+      name: "Indeed.com",
+      description: "Career advancement courses and skill assessments",
+      link: "https://indeed.com/career-advice/courses",
+      category: "Career"
     },
     {
-      name: "AngelList",
-      description: "Startup jobs and equity opportunities",
-      link: "https://angel.co/jobs",
-      category: "Startup"
+      name: "Internshala",
+      description: "Online training courses and certification programs",
+      link: "https://internshala.com/trainings",
+      category: "Training"
     },
     {
-      name: "Stack Overflow Jobs",
-      description: "Developer-focused job board for tech positions",
-      link: "https://stackoverflow.com/jobs",
-      category: "Tech"
+      name: "LinkedIn Learning",
+      description: "Professional development courses by industry experts",
+      link: "https://linkedin.com/learning",
+      category: "Professional"
     }
   ];
 
@@ -62,7 +62,7 @@ const JobPortalsCard: React.FC<JobPortalsCardProps> = ({ message }) => {
       const domain = new URL(url).hostname;
       return `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
     } catch {
-      return 'https://via.placeholder.com/50x50?text=J';
+      return 'https://via.placeholder.com/50x50?text=C';
     }
   };
 
@@ -73,16 +73,16 @@ const JobPortalsCard: React.FC<JobPortalsCardProps> = ({ message }) => {
     switch (categoryLower) {
       case 'tech':
         return 'computer';
-      case 'startup':
-        return 'rocket-launch';
-      case 'general':
-        return 'work';
-      case 'remote':
-        return 'home';
-      case 'freelance':
-        return 'person';
+      case 'professional':
+        return 'business-center';
+      case 'career':
+        return 'trending-up';
+      case 'training':
+        return 'school';
+      case 'certification':
+        return 'verified';
       default:
-        return 'work';
+        return 'book';
     }
   };
 
@@ -93,21 +93,21 @@ const JobPortalsCard: React.FC<JobPortalsCardProps> = ({ message }) => {
     switch (categoryLower) {
       case 'tech':
         return '#2E7D32'; // Dark green
-      case 'startup':
+      case 'professional':
         return '#388E3C'; // Medium green
-      case 'general':
+      case 'career':
         return '#4CAF50'; // Standard green
-      case 'remote':
+      case 'training':
         return '#66BB6A'; // Light green
-      case 'freelance':
+      case 'certification':
         return '#81C784'; // Lighter green
       default:
         return '#49654E'; // Default green from community theme
     }
   };
 
-  // Handle job portal link press
-  const handlePortalPress = async (link: string) => {
+  // Handle course website link press
+  const handleWebsitePress = async (link: string) => {
     try {
       const supported = await Linking.canOpenURL(link);
       if (supported) {
@@ -120,51 +120,51 @@ const JobPortalsCard: React.FC<JobPortalsCardProps> = ({ message }) => {
     }
   };
 
-  // Check if message contains /jobportals command
-  const isJobPortalsCommand = message.toLowerCase().includes('/jobportals');
+  // Check if message contains /courses command
+  const isCoursesCommand = message.toLowerCase().includes('/jobportals');
 
-  // If not a job portals command, don't render anything
-  if (!isJobPortalsCommand) {
+  // If not a courses command, don't render anything
+  if (!isCoursesCommand) {
     return null;
   }
 
   return (
     <View style={styles.container}>
       <View style={styles.headerContainer}>
-        <MaterialIcons name="work" size={24} color="#49654E" />
-        <Text style={styles.headerTitle}>Job Search Platforms</Text>
+        <MaterialIcons name="school" size={24} color="#49654E" />
+        <Text style={styles.headerTitle}>Learning Platforms</Text>
       </View>
       
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {jobPortals.map((portal, index) => (
+        {courseWebsites.map((website, index) => (
           <TouchableOpacity 
             key={index} 
-            style={styles.portalCard}
-            onPress={() => handlePortalPress(portal.link)}
+            style={styles.websiteCard}
+            onPress={() => handleWebsitePress(website.link)}
             activeOpacity={0.7}
           >
             {/* Header with favicon and basic info */}
             <View style={styles.cardHeader}>
               <Image 
-                source={{ uri: getFaviconUrl(portal.link) }} 
-                style={styles.portalLogo}
-                defaultSource={{ uri: 'https://via.placeholder.com/50x50?text=J' }}
+                source={{ uri: getFaviconUrl(website.link) }} 
+                style={styles.websiteLogo}
+                defaultSource={{ uri: 'https://via.placeholder.com/50x50?text=C' }}
               />
               <View style={styles.cardTextContainer}>
-                <Text style={styles.portalName} numberOfLines={1}>
-                  {portal.name}
+                <Text style={styles.websiteName} numberOfLines={1}>
+                  {website.name}
                 </Text>
-                <Text style={styles.portalDescription} numberOfLines={2}>
-                  {portal.description}
+                <Text style={styles.websiteDescription} numberOfLines={2}>
+                  {website.description}
                 </Text>
                 <View style={styles.categoryContainer}>
                   <MaterialIcons 
-                    name={getCategoryIcon(portal.category) as any} 
+                    name={getCategoryIcon(website.category) as any} 
                     size={16} 
-                    color={getCategoryColor(portal.category)} 
+                    color={getCategoryColor(website.category)} 
                   />
-                  <Text style={[styles.categoryText, { color: getCategoryColor(portal.category) }]}>
-                    {portal.category}
+                  <Text style={[styles.categoryText, { color: getCategoryColor(website.category) }]}>
+                    {website.category}
                   </Text>
                 </View>
               </View>
@@ -175,7 +175,7 @@ const JobPortalsCard: React.FC<JobPortalsCardProps> = ({ message }) => {
             <View style={styles.linkContainer}>
               <MaterialIcons name="link" size={14} color="#888888" />
               <Text style={styles.linkText} numberOfLines={1}>
-                {portal.link}
+                {website.link}
               </Text>
             </View>
           </TouchableOpacity>
@@ -186,7 +186,7 @@ const JobPortalsCard: React.FC<JobPortalsCardProps> = ({ message }) => {
       <View style={styles.footerContainer}>
         <MaterialIcons name="info" size={16} color="#666666" />
         <Text style={styles.footerText}>
-          Tap any platform to explore job opportunities
+          Tap any platform to explore learning opportunities
         </Text>
       </View>
     </View>
@@ -222,7 +222,7 @@ const styles = StyleSheet.create({
   scrollView: {
     maxHeight: 450,
   },
-  portalCard: {
+  websiteCard: {
     padding: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#F0F0F0',
@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 8,
   },
-  portalLogo: {
+  websiteLogo: {
     width: 48,
     height: 48,
     borderRadius: 8,
@@ -242,14 +242,14 @@ const styles = StyleSheet.create({
   cardTextContainer: {
     flex: 1,
   },
-  portalName: {
+  websiteName: {
     fontSize: 16,
     fontWeight: '600',
     color: '#253528', // Dark green text matching community theme
     lineHeight: 22,
     marginBottom: 4,
   },
-  portalDescription: {
+  websiteDescription: {
     fontSize: 14,
     color: '#666666',
     lineHeight: 20,
@@ -297,4 +297,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default JobPortalsCard;
+export default CourseWebsitesCard;
