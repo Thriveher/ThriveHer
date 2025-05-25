@@ -10,7 +10,15 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { transcribeVoice, isAudioRecordingSupported, VoiceRecordingOptions } from '../api/getTranscription';
+import { 
+  transcribeVoice, 
+  stopRecording,
+  getRecordingStatus,
+  isRecording,
+  isAudioRecordingSupported, 
+  type VoiceRecordingOptions,
+  type RecordingStatus
+} from '../api/getTranscription';
 
 const { width, height } = Dimensions.get('window');
 
@@ -34,11 +42,12 @@ interface VoiceRecordingOverlayProps {
   onTranscriptionComplete: (text: string) => void;
 }
 
-interface RecordingState {
-  isRecording: boolean;
-  isProcessing: boolean;
+interface ComponentState {
+  recordingStatus: RecordingStatus;
   error: string | null;
   recordingTime: number;
+  transcriptionText: string | null;
+  detectedLanguage: string | null;
 }
 
 export default function VoiceRecordingOverlay({ 
@@ -46,21 +55,32 @@ export default function VoiceRecordingOverlay({
   onClose, 
   onTranscriptionComplete 
 }: VoiceRecordingOverlayProps) {
-  const [state, setState] = useState<RecordingState>({
-    isRecording: false,
-    isProcessing: false,
+  const [state, setState] = useState<ComponentState>({
+    recordingStatus: 'idle',
     error: null,
-    recordingTime: 0
+    recordingTime: 0,
+    transcriptionText: null,
+    detectedLanguage: null
   });
 
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // References for manual recording control
-  const isRecordingRef = useRef(false);
+  const statusCheckRef = useRef<NodeJS.Timeout | null>(null);
   const recordingStartTimeRef = useRef<number>(0);
+  
+  // Clean up function
+  const cleanup = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    if (statusCheckRef.current) {
+      clearInterval(statusCheckRef.current);
+      statusCheckRef.current = null;
+    }
+  };
 
   // Entrance animation
   useEffect(() => {
@@ -86,7 +106,7 @@ export default function VoiceRecordingOverlay({
 
   // Pulse animation for recording
   useEffect(() => {
-    if (state.isRecording) {
+    if (state.recordingStatus === 'recording') {
       const pulse = () => {
         Animated.sequence([
           Animated.timing(pulseAnim, {
@@ -100,66 +120,81 @@ export default function VoiceRecordingOverlay({
             useNativeDriver: true,
           }),
         ]).start(() => {
-          if (state.isRecording) pulse();
+          if (state.recordingStatus === 'recording') pulse();
         });
       };
       pulse();
     } else {
       pulseAnim.setValue(1);
     }
-  }, [state.isRecording]);
+  }, [state.recordingStatus]);
 
-  // Timer effect
+  // Status monitoring effect
   useEffect(() => {
-    if (state.isRecording) {
-      recordingStartTimeRef.current = Date.now();
-      timerRef.current = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - recordingStartTimeRef.current) / 1000);
-        setState(prev => ({ ...prev, recordingTime: elapsed }));
-      }, 1000);
+    if (isOpen) {
+      // Check recording status every 100ms
+      statusCheckRef.current = setInterval(() => {
+        const currentStatus = getRecordingStatus();
+        const currentlyRecording = isRecording();
+        
+        setState(prev => {
+          if (prev.recordingStatus !== currentStatus) {
+            return { ...prev, recordingStatus: currentStatus };
+          }
+          return prev;
+        });
+      }, 100);
+    }
+
+    return cleanup;
+  }, [isOpen]);
+
+  // Timer effect - only run when recording
+  useEffect(() => {
+    if (state.recordingStatus === 'recording') {
+      if (!timerRef.current) {
+        recordingStartTimeRef.current = Date.now();
+        timerRef.current = setInterval(() => {
+          const elapsed = Math.floor((Date.now() - recordingStartTimeRef.current) / 1000);
+          setState(prev => ({ ...prev, recordingTime: elapsed }));
+        }, 1000);
+      }
     } else {
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
-    }
-
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
+      if (state.recordingStatus === 'idle' || state.recordingStatus === 'completed') {
+        setState(prev => ({ ...prev, recordingTime: 0 }));
       }
-    };
-  }, [state.isRecording]);
+    }
+  }, [state.recordingStatus]);
 
   // Auto-stop after 30 seconds
   useEffect(() => {
-    if (state.recordingTime >= 30) {
+    if (state.recordingTime >= 30 && state.recordingStatus === 'recording') {
       handleStopRecording();
     }
-  }, [state.recordingTime]);
+  }, [state.recordingTime, state.recordingStatus]);
 
   // Cleanup on close
   useEffect(() => {
     if (!isOpen) {
-      cleanupRecording();
+      cleanup();
+      // Force stop any ongoing recording
+      if (getRecordingStatus() === 'recording') {
+        stopRecording().catch(console.error);
+      }
+      // Reset state
       setState({
-        isRecording: false,
-        isProcessing: false,
+        recordingStatus: 'idle',
         error: null,
-        recordingTime: 0
+        recordingTime: 0,
+        transcriptionText: null,
+        detectedLanguage: null
       });
     }
   }, [isOpen]);
-
-  const cleanupRecording = () => {
-    isRecordingRef.current = false;
-    
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-  };
 
   const handleStartRecording = async () => {
     if (!isAudioRecordingSupported()) {
@@ -170,69 +205,37 @@ export default function VoiceRecordingOverlay({
       return;
     }
 
-    try {
-      setState(prev => ({ 
-        ...prev, 
-        error: null, 
-        isRecording: true, 
-        recordingTime: 0
-      }));
-
-      // Set recording flag
-      isRecordingRef.current = true;
-      recordingStartTimeRef.current = Date.now();
-
-    } catch (error) {
-      console.error('Recording start error:', error);
-      setState(prev => ({ 
-        ...prev, 
-        error: 'Unable to start recording. Please try again.',
-        isRecording: false
-      }));
-      isRecordingRef.current = false;
-    }
-  };
-
-  const handleStopRecording = async () => {
-    if (!isRecordingRef.current || state.isProcessing) {
-      return;
-    }
-
-    // Immediately update UI state
+    // Clear any previous errors
     setState(prev => ({ 
       ...prev, 
-      isRecording: false, 
-      isProcessing: true 
+      error: null,
+      transcriptionText: null,
+      detectedLanguage: null
     }));
 
-    // Stop the recording flag
-    isRecordingRef.current = false;
-
-    // Clear the timer immediately
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-
-    // Process the recording using your API
-    await processRecording();
-  };
-
-  const processRecording = async () => {
     try {
-      // Calculate recording duration
-      const recordingDuration = state.recordingTime * 1000; // Convert to milliseconds
-      
-      // Create recording options compatible with your API
-      const voiceOptions: VoiceRecordingOptions = {
-        maxDuration: Math.min(recordingDuration, 30000), // Max 30 seconds
-        mimeType: 'audio/webm' // Default format
+      // Configure recording options
+      const options: VoiceRecordingOptions = {
+        maxDuration: 30000, // 30 seconds
+        autoStop: true,
+        onStatusChange: (status: RecordingStatus) => {
+          setState(prev => ({ ...prev, recordingStatus: status }));
+          
+          // Handle different status changes
+          if (status === 'error') {
+            setState(prev => ({ 
+              ...prev, 
+              error: 'Recording failed. Please try again.' 
+            }));
+          }
+        }
       };
+
+      // Start recording using the API
+      const result = await transcribeVoice(options);
       
-      // Use your API's transcribeVoice function
-      const result = await transcribeVoice(voiceOptions);
-      
-      if (result.success && result.text && result.text.trim()) {
+      // Handle the result
+      if (result.success && result.text) {
         const transcribedText = result.text.trim();
         
         // Filter out common false positives
@@ -244,52 +247,79 @@ export default function VoiceRecordingOverlay({
           setState(prev => ({ 
             ...prev, 
             error: 'No speech detected. Please try recording again.',
-            isProcessing: false
+            recordingStatus: 'error'
           }));
           return;
         }
         
-        // Success - pass transcription and close
-        onTranscriptionComplete(transcribedText);
+        // Success - store result
+        setState(prev => ({
+          ...prev,
+          transcriptionText: transcribedText,
+          detectedLanguage: result.languageName || result.language,
+          recordingStatus: 'completed'
+        }));
         
-        // Show language info if available
-        if (result.language) {
-          console.log(`Detected language: ${result.language}`);
-        }
-        
-        onClose();
+        // Pass transcription to parent and close
+        setTimeout(() => {
+          onTranscriptionComplete(transcribedText);
+          onClose();
+        }, 1000); // Brief delay to show success state
         
       } else {
         setState(prev => ({ 
           ...prev, 
           error: result.error || 'Transcription failed. Please try again.',
-          isProcessing: false
+          recordingStatus: 'error'
         }));
       }
     } catch (error) {
-      console.error('Transcription error:', error);
+      console.error('Recording error:', error);
       setState(prev => ({ 
         ...prev, 
-        error: 'Failed to process audio. Please try again.',
-        isProcessing: false
+        error: error instanceof Error ? error.message : 'Recording failed. Please try again.',
+        recordingStatus: 'error'
+      }));
+    }
+  };
+
+  const handleStopRecording = async () => {
+    if (state.recordingStatus !== 'recording') {
+      return;
+    }
+
+    try {
+      setState(prev => ({ ...prev, recordingStatus: 'stopping' }));
+      await stopRecording();
+    } catch (error) {
+      console.error('Stop recording error:', error);
+      setState(prev => ({ 
+        ...prev, 
+        error: 'Failed to stop recording properly',
+        recordingStatus: 'error'
       }));
     }
   };
 
   const handleMainButtonPress = () => {
-    if (state.isProcessing) {
-      return; // Don't allow interaction while processing
+    // Prevent interaction during processing states
+    if (['requesting-permission', 'stopping', 'processing'].includes(state.recordingStatus)) {
+      return;
     }
     
-    if (state.isRecording) {
+    if (state.recordingStatus === 'recording') {
       handleStopRecording();
-    } else {
+    } else if (['idle', 'error', 'completed'].includes(state.recordingStatus)) {
       handleStartRecording();
     }
   };
 
-  const handleClose = () => {
-    cleanupRecording();
+  const handleClose = async () => {
+    cleanup();
+    // Stop any ongoing recording
+    if (state.recordingStatus === 'recording') {
+      await stopRecording().catch(console.error);
+    }
     onClose();
   };
 
@@ -298,7 +328,9 @@ export default function VoiceRecordingOverlay({
       ...prev, 
       error: null, 
       recordingTime: 0,
-      isProcessing: false
+      recordingStatus: 'idle',
+      transcriptionText: null,
+      detectedLanguage: null
     }));
   };
 
@@ -309,35 +341,68 @@ export default function VoiceRecordingOverlay({
   };
 
   const getMainButtonContent = () => {
-    if (state.isProcessing) {
-      return {
-        icon: 'hourglass' as const,
-        text: 'Processing...',
-        buttonStyle: styles.processingButton,
-        showPulse: false,
-        disabled: true
-      };
-    } else if (state.isRecording) {
-      return {
-        icon: 'stop' as const,
-        text: 'Tap to stop and transcribe',
-        buttonStyle: styles.stopButton,
-        showPulse: true,
-        disabled: false
-      };
-    } else {
-      return {
-        icon: 'mic' as const,
-        text: 'Tap to start recording',
-        buttonStyle: styles.startButton,
-        showPulse: false,
-        disabled: false
-      };
+    switch (state.recordingStatus) {
+      case 'requesting-permission':
+        return {
+          icon: 'hourglass' as const,
+          text: 'Requesting microphone access...',
+          buttonStyle: styles.processingButton,
+          showPulse: false,
+          disabled: true
+        };
+      case 'recording':
+        return {
+          icon: 'stop' as const,
+          text: 'Tap to stop recording',
+          buttonStyle: styles.stopButton,
+          showPulse: true,
+          disabled: false
+        };
+      case 'stopping':
+        return {
+          icon: 'hourglass' as const,
+          text: 'Stopping recording...',
+          buttonStyle: styles.processingButton,
+          showPulse: false,
+          disabled: true
+        };
+      case 'processing':
+        return {
+          icon: 'hourglass' as const,
+          text: 'Processing audio...',
+          buttonStyle: styles.processingButton,
+          showPulse: false,
+          disabled: true
+        };
+      case 'completed':
+        return {
+          icon: 'checkmark' as const,
+          text: 'Transcription completed!',
+          buttonStyle: styles.completedButton,
+          showPulse: false,
+          disabled: true
+        };
+      case 'error':
+        return {
+          icon: 'mic' as const,
+          text: 'Tap to try again',
+          buttonStyle: styles.startButton,
+          showPulse: false,
+          disabled: false
+        };
+      default: // idle
+        return {
+          icon: 'mic' as const,
+          text: 'Tap to start recording',
+          buttonStyle: styles.startButton,
+          showPulse: false,
+          disabled: false
+        };
     }
   };
 
   const renderContent = () => {
-    if (state.isProcessing) {
+    if (state.recordingStatus === 'processing') {
       return (
         <View style={styles.contentContainer}>
           <View style={styles.headerContainer}>
@@ -391,8 +456,20 @@ export default function VoiceRecordingOverlay({
           </View>
         )}
 
+        {state.recordingStatus === 'completed' && state.transcriptionText && (
+          <View style={styles.successContainer}>
+            <View style={styles.successIconContainer}>
+              <Ionicons name="checkmark-circle" size={16} color={COLORS.SUCCESS_GREEN} />
+            </View>
+            <Text style={styles.successText}>Recording transcribed successfully!</Text>
+            {state.detectedLanguage && (
+              <Text style={styles.languageText}>Detected: {state.detectedLanguage}</Text>
+            )}
+          </View>
+        )}
+
         <View style={styles.recordingArea}>
-          {state.isRecording ? (
+          {state.recordingStatus === 'recording' ? (
             <>
               <View style={styles.recordingStatusContainer}>
                 <View style={styles.recordingIndicatorWrapper}>
@@ -406,10 +483,21 @@ export default function VoiceRecordingOverlay({
             <>
               <View style={styles.readyStateContainer}>
                 <View style={styles.microphoneIconContainer}>
-                  <Ionicons name="mic-outline" size={48} color={COLORS.SOFT_GREEN} />
+                  <Ionicons 
+                    name={state.recordingStatus === 'completed' ? "checkmark-circle-outline" : "mic-outline"} 
+                    size={48} 
+                    color={state.recordingStatus === 'completed' ? COLORS.SUCCESS_GREEN : COLORS.SOFT_GREEN} 
+                  />
                 </View>
-                <Text style={styles.readyTitle}>Ready to Record</Text>
-                <Text style={styles.readySubtitle}>Tap the microphone to start recording</Text>
+                <Text style={styles.readyTitle}>
+                  {state.recordingStatus === 'completed' ? 'Transcription Complete' : 
+                   state.recordingStatus === 'error' ? 'Ready to Retry' : 'Ready to Record'}
+                </Text>
+                <Text style={styles.readySubtitle}>
+                  {state.recordingStatus === 'completed' ? 'Your voice has been converted to text' :
+                   state.recordingStatus === 'error' ? 'Tap the microphone to try again' :
+                   'Tap the microphone to start recording'}
+                </Text>
               </View>
             </>
           )}
@@ -423,7 +511,7 @@ export default function VoiceRecordingOverlay({
             <TouchableOpacity 
               onPress={handleMainButtonPress} 
               style={[styles.micButton, buttonContent.buttonStyle]}
-              activeOpacity={0.8}
+              activeOpacity={buttonContent.disabled ? 1 : 0.8}
               disabled={buttonContent.disabled}
             >
               <Ionicons name={buttonContent.icon} size={24} color={COLORS.WHITE} />
@@ -432,14 +520,18 @@ export default function VoiceRecordingOverlay({
           
           <Text style={styles.instructionText}>{buttonContent.text}</Text>
           
-          {!state.isRecording && !state.isProcessing && (
+          {state.recordingStatus === 'idle' && (
             <Text style={styles.hintText}>
               Maximum duration: 30 seconds • Supports Indian languages and English
             </Text>
           )}
           
-          {state.isRecording && (
+          {state.recordingStatus === 'recording' && (
             <Text style={styles.hintText}>Speak clearly for best transcription results</Text>
+          )}
+
+          {state.recordingStatus === 'requesting-permission' && (
+            <Text style={styles.hintText}>Please allow microphone access to continue</Text>
           )}
         </View>
       </View>
@@ -551,6 +643,33 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 18,
   },
+  successContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: `${COLORS.SUCCESS_GREEN}08`,
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: `${COLORS.SUCCESS_GREEN}15`,
+  },
+  successIconContainer: {
+    marginRight: 8,
+    marginTop: 1,
+  },
+  successText: {
+    color: COLORS.SUCCESS_GREEN,
+    fontSize: 13,
+    fontWeight: '500',
+    flex: 1,
+    lineHeight: 18,
+  },
+  languageText: {
+    color: COLORS.SUCCESS_GREEN,
+    fontSize: 11,
+    fontWeight: '400',
+    marginTop: 2,
+  },
   recordingArea: {
     alignItems: 'center',
     paddingVertical: 20,
@@ -626,6 +745,9 @@ const styles = StyleSheet.create({
   processingButton: {
     backgroundColor: COLORS.MEDIUM_OLIVE,
     opacity: 0.7,
+  },
+  completedButton: {
+    backgroundColor: COLORS.SUCCESS_GREEN,
   },
   instructionText: {
     fontSize: 13,
