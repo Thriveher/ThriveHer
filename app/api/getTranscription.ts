@@ -7,6 +7,7 @@ const GROQ_API_URL = 'https://api.groq.com/openai/v1/audio/transcriptions';
 export interface TranscriptionResult {
   success: boolean;
   text?: string;
+  language?: string; // Detected language code
   error?: string;
 }
 
@@ -17,8 +18,9 @@ export interface VoiceRecordingOptions {
 
 /**
  * Records audio from user's microphone and transcribes it using Groq's Whisper API
+ * with automatic language detection for Indian languages
  * @param options - Optional configuration for recording
- * @returns Promise<TranscriptionResult> - The transcribed text or error
+ * @returns Promise<TranscriptionResult> - The transcribed text, detected language, or error
  */
 export async function transcribeVoice(
   options: VoiceRecordingOptions = {}
@@ -117,18 +119,19 @@ export function stopRecording(): void {
 }
 
 /**
- * Transcribe an audio blob using Groq's Whisper API
+ * Transcribe an audio blob using Groq's Whisper API with automatic language detection
+ * Filters results to only support Indian languages
  * @param audioBlob - The audio data to transcribe
- * @returns Promise<TranscriptionResult> - The transcribed text or error
+ * @returns Promise<TranscriptionResult> - The transcribed text, detected language, or error
  */
 async function transcribeAudioBlob(audioBlob: Blob): Promise<TranscriptionResult> {
   try {
     // Prepare form data for the API request
     const formData = new FormData();
     formData.append('file', audioBlob, 'audio.webm');
-    formData.append('model', 'whisper-large-v3');
-    formData.append('language', 'en'); // You can make this configurable
-    formData.append('response_format', 'json');
+    formData.append('model', 'whisper-large-v3-turbo');
+    // Remove language parameter to enable auto-detection
+    formData.append('response_format', 'verbose_json'); // Use verbose_json to get language info
 
     // Make API request to Groq
     const response = await fetch(GROQ_API_URL, {
@@ -150,9 +153,17 @@ async function transcribeAudioBlob(audioBlob: Blob): Promise<TranscriptionResult
       throw new Error('No transcription text received from API');
     }
 
+    const detectedLanguage = result.language || 'unknown';
+    
+    // Check if detected language is an Indian language
+    if (!isIndianLanguage(detectedLanguage)) {
+      throw new Error(`Unsupported language detected: ${getLanguageName(detectedLanguage)}. Only Indian languages are supported.`);
+    }
+
     return {
       success: true,
-      text: result.text.trim()
+      text: result.text.trim(),
+      language: detectedLanguage
     };
 
   } catch (error) {
@@ -161,6 +172,42 @@ async function transcribeAudioBlob(audioBlob: Blob): Promise<TranscriptionResult
       error: error instanceof Error ? error.message : 'Transcription failed'
     };
   }
+}
+
+/**
+ * Check if a language code represents an Indian language
+ * @param languageCode - ISO language code
+ * @returns boolean - Whether the language is an Indian language
+ */
+function isIndianLanguage(languageCode: string): boolean {
+  const indianLanguages = [
+    'hi', // Hindi
+    'bn', // Bengali
+    'te', // Telugu
+    'mr', // Marathi
+    'ta', // Tamil
+    'gu', // Gujarati
+    'kn', // Kannada
+    'ml', // Malayalam
+    'or', // Odia
+    'pa', // Punjabi
+    'as', // Assamese
+    'mai', // Maithili
+    'mag', // Magahi
+    'bho', // Bhojpuri
+    'ne', // Nepali
+    'sa', // Sanskrit
+    'ks', // Kashmiri
+    'sd', // Sindhi
+    'kok', // Konkani
+    'mni', // Manipuri
+    'sat', // Santali
+    'doi', // Dogri
+    'brx', // Bodo
+    'en' // English (widely used in India)
+  ];
+  
+  return indianLanguages.includes(languageCode);
 }
 
 /**
@@ -178,7 +225,7 @@ export function isAudioRecordingSupported(): boolean {
 /**
  * Alternative function that accepts an audio file directly (for file uploads)
  * @param audioFile - File object containing audio data
- * @returns Promise<TranscriptionResult> - The transcribed text or error
+ * @returns Promise<TranscriptionResult> - The transcribed text, detected language, or error
  */
 export async function transcribeAudioFile(audioFile: File): Promise<TranscriptionResult> {
   try {
@@ -195,4 +242,59 @@ export async function transcribeAudioFile(audioFile: File): Promise<Transcriptio
       error: error instanceof Error ? error.message : 'File transcription failed'
     };
   }
+}
+
+/**
+ * Get human-readable language name from language code
+ * Focused on Indian languages
+ * @param languageCode - ISO language code (e.g., 'hi', 'bn', 'te')
+ * @returns string - Human-readable language name
+ */
+export function getLanguageName(languageCode: string): string {
+  const indianLanguageNames: { [key: string]: string } = {
+    'hi': 'Hindi (हिन्दी)',
+    'bn': 'Bengali (বাংলা)',
+    'te': 'Telugu (తెలుగు)',
+    'mr': 'Marathi (मराठी)',
+    'ta': 'Tamil (தமிழ்)',
+    'gu': 'Gujarati (ગુજરાતી)',
+    'kn': 'Kannada (ಕನ್ನಡ)',
+    'ml': 'Malayalam (മലയാളം)',
+    'or': 'Odia (ଓଡ଼ିଆ)',
+    'pa': 'Punjabi (ਪੰਜਾਬੀ)',
+    'as': 'Assamese (অসমীয়া)',
+    'mai': 'Maithili (मैथिली)',
+    'mag': 'Magahi (𑂧𑂏𑂯𑂲)',
+    'bho': 'Bhojpuri (भोजपुरी)',
+    'ne': 'Nepali (नेपाली)',
+    'sa': 'Sanskrit (संस्कृतम्)',
+    'ks': 'Kashmiri (कॉशुर)',
+    'sd': 'Sindhi (سنڌي)',
+    'kok': 'Konkani (कोंकणी)',
+    'mni': 'Manipuri (মণিপুরী)',
+    'sat': 'Santali (ᱥᱟᱱᱛᱟᱲᱤ)',
+    'doi': 'Dogri (डोगरी)',
+    'brx': 'Bodo (बड़ो)',
+    'en': 'English',
+    'unknown': 'Unknown Language'
+  };
+
+  return indianLanguageNames[languageCode] || `${languageCode.toUpperCase()} (Unsupported)`;
+}
+
+/**
+ * Get list of all supported Indian languages
+ * @returns Array of objects with language code and name
+ */
+export function getSupportedLanguages(): Array<{ code: string; name: string }> {
+  const supportedCodes = [
+    'hi', 'bn', 'te', 'mr', 'ta', 'gu', 'kn', 'ml', 'or', 'pa', 
+    'as', 'mai', 'mag', 'bho', 'ne', 'sa', 'ks', 'sd', 'kok', 
+    'mni', 'sat', 'doi', 'brx', 'en'
+  ];
+  
+  return supportedCodes.map(code => ({
+    code,
+    name: getLanguageName(code)
+  }));
 }

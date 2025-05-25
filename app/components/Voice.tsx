@@ -41,6 +41,14 @@ interface RecordingState {
   recordingTime: number;
 }
 
+// Define the VoiceRecordingOptions interface based on what the API expects
+interface VoiceRecordingOptions {
+  uri?: string;
+  file?: File;
+  blob?: Blob;
+  // Add other properties as needed based on your API
+}
+
 export default function VoiceRecordingOverlay({ 
   isOpen, 
   onClose, 
@@ -139,7 +147,7 @@ export default function VoiceRecordingOverlay({
   // Cleanup on close
   useEffect(() => {
     if (!isOpen) {
-      handleStopRecording();
+      cleanupRecording();
       setState({
         isRecording: false,
         isProcessing: false,
@@ -148,6 +156,25 @@ export default function VoiceRecordingOverlay({
       });
     }
   }, [isOpen]);
+
+  const cleanupRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+    
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    audioChunksRef.current = [];
+    mediaRecorderRef.current = null;
+  };
 
   const handleStartRecording = async () => {
     if (!isAudioRecordingSupported()) {
@@ -196,61 +223,14 @@ export default function VoiceRecordingOverlay({
       };
 
       mediaRecorder.onstop = async () => {
-        if (audioChunksRef.current.length === 0) {
-          setState(prev => ({ 
-            ...prev, 
-            error: 'No audio data recorded. Please try again.',
-            isProcessing: false
-          }));
-          return;
+        // Process recording when stopped
+        if (audioChunksRef.current.length > 0) {
+          await processRecording();
         }
-
-        setState(prev => ({ ...prev, isProcessing: true }));
         
-        try {
-          const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-          const audioFile = new File([audioBlob], 'recording.webm', { 
-            type: mimeType 
-          });
-          
-          const result = await transcribeVoice(audioFile);
-          
-          if (result.success && result.text && result.text.trim()) {
-            const transcribedText = result.text.trim();
-            
-            const filteredText = transcribedText.toLowerCase();
-            if (filteredText === 'thank you' || 
-                filteredText === 'thanks' || 
-                filteredText === 'thank you.' ||
-                filteredText.length < 2) {
-              setState(prev => ({ 
-                ...prev, 
-                error: 'No speech detected. Please try recording again.',
-                isProcessing: false
-              }));
-              return;
-            }
-            
-            // Pass transcription and close immediately
-            onTranscriptionComplete(transcribedText);
-            onClose();
-            
-          } else {
-            setState(prev => ({ 
-              ...prev, 
-              error: result.error || 'Transcription failed. Please try again.',
-              isProcessing: false
-            }));
-          }
-        } catch (error) {
-          console.error('Transcription error:', error);
-          setState(prev => ({ 
-            ...prev, 
-            error: 'Failed to process audio. Please try again.',
-            isProcessing: false
-          }));
-        } finally {
-          audioChunksRef.current = [];
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+          streamRef.current = null;
         }
       };
 
@@ -264,7 +244,7 @@ export default function VoiceRecordingOverlay({
         }));
       };
 
-      mediaRecorder.start(1000);
+      mediaRecorder.start(100); // Collect data every 100ms
       
     } catch (error) {
       console.error('Recording start error:', error);
@@ -278,26 +258,137 @@ export default function VoiceRecordingOverlay({
 
   const handleStopRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      // Immediately set processing state and stop recording
+      setState(prev => ({ ...prev, isRecording: false, isProcessing: true }));
       mediaRecorderRef.current.stop();
+      
+      // Clear the timer immediately
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
     }
-    
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
+  };
+
+  const processRecording = async () => {
+    if (audioChunksRef.current.length === 0) {
+      setState(prev => ({ 
+        ...prev, 
+        error: 'No audio data recorded. Please try again.',
+        isProcessing: false
+      }));
+      return;
     }
 
-    setState(prev => ({ ...prev, isRecording: false }));
+    try {
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
+        ? 'audio/webm;codecs=opus' 
+        : 'audio/webm';
+      
+      const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+      
+      // Create the options object in the format expected by the API
+      const voiceOptions: VoiceRecordingOptions = {
+        blob: audioBlob,
+        file: new File([audioBlob], 'recording.webm', { type: mimeType })
+      };
+      
+      const result = await transcribeVoice(voiceOptions);
+      
+      if (result.success && result.text && result.text.trim()) {
+        const transcribedText = result.text.trim();
+        
+        const filteredText = transcribedText.toLowerCase();
+        if (filteredText === 'thank you' || 
+            filteredText === 'thanks' || 
+            filteredText === 'thank you.' ||
+            filteredText.length < 2) {
+          setState(prev => ({ 
+            ...prev, 
+            error: 'No speech detected. Please try recording again.',
+            isProcessing: false
+          }));
+          return;
+        }
+        
+        // Pass transcription and close immediately
+        onTranscriptionComplete(transcribedText);
+        onClose();
+        
+      } else {
+        setState(prev => ({ 
+          ...prev, 
+          error: result.error || 'Transcription failed. Please try again.',
+          isProcessing: false
+        }));
+      }
+    } catch (error) {
+      console.error('Transcription error:', error);
+      setState(prev => ({ 
+        ...prev, 
+        error: 'Failed to process audio. Please try again.',
+        isProcessing: false
+      }));
+    } finally {
+      audioChunksRef.current = [];
+    }
+  };
+
+  const handleMainButtonPress = () => {
+    if (state.isRecording) {
+      handleStopRecording();
+    } else if (!state.isProcessing) {
+      handleStartRecording();
+    }
   };
 
   const handleClose = () => {
-    handleStopRecording();
+    cleanupRecording();
     onClose();
+  };
+
+  const handleRetry = () => {
+    setState(prev => ({ 
+      ...prev, 
+      error: null, 
+      recordingTime: 0,
+      isProcessing: false
+    }));
+    audioChunksRef.current = [];
   };
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const getMainButtonContent = () => {
+    if (state.isProcessing) {
+      return {
+        icon: 'hourglass' as const,
+        text: 'Processing...',
+        buttonStyle: styles.processingButton,
+        showPulse: false,
+        disabled: true
+      };
+    } else if (state.isRecording) {
+      return {
+        icon: 'stop' as const,
+        text: 'Tap to stop and send',
+        buttonStyle: styles.stopButton,
+        showPulse: true,
+        disabled: false
+      };
+    } else {
+      return {
+        icon: 'mic' as const,
+        text: 'Tap to start recording',
+        buttonStyle: styles.startButton,
+        showPulse: false,
+        disabled: false
+      };
+    }
   };
 
   const renderContent = () => {
@@ -327,6 +418,8 @@ export default function VoiceRecordingOverlay({
       );
     }
 
+    const buttonContent = getMainButtonContent();
+
     return (
       <View style={styles.contentContainer}>
         <View style={styles.headerContainer}>
@@ -347,6 +440,9 @@ export default function VoiceRecordingOverlay({
               <Ionicons name="alert-circle" size={16} color={COLORS.ERROR_RED} />
             </View>
             <Text style={styles.errorText}>{state.error}</Text>
+            <TouchableOpacity onPress={handleRetry} style={styles.retryButton}>
+              <Text style={styles.retryText}>Try Again</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -360,19 +456,6 @@ export default function VoiceRecordingOverlay({
                 </View>
                 <Text style={styles.timerText}>{formatTime(state.recordingTime)}</Text>
               </View>
-              
-              <Animated.View style={[styles.micButtonWrapper, { transform: [{ scale: pulseAnim }] }]}>
-                <TouchableOpacity 
-                  onPress={handleStopRecording} 
-                  style={[styles.micButton, styles.stopButton]}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="stop" size={24} color={COLORS.WHITE} />
-                </TouchableOpacity>
-              </Animated.View>
-              
-              <Text style={styles.instructionText}>Tap to stop recording</Text>
-              <Text style={styles.hintText}>Speak clearly for best transcription results</Text>
             </>
           ) : (
             <>
@@ -383,19 +466,35 @@ export default function VoiceRecordingOverlay({
                 <Text style={styles.readyTitle}>Ready to Record</Text>
                 <Text style={styles.readySubtitle}>Tap the microphone to start recording</Text>
               </View>
-              
-              <TouchableOpacity 
-                onPress={handleStartRecording} 
-                style={[styles.micButton, styles.startButton]}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="mic" size={24} color={COLORS.WHITE} />
-              </TouchableOpacity>
-              
-              <Text style={styles.hintText}>
-                Maximum duration: 30 seconds • Speak clearly and minimize background noise
-              </Text>
             </>
+          )}
+          
+          <Animated.View 
+            style={[
+              styles.micButtonWrapper, 
+              buttonContent.showPulse ? { transform: [{ scale: pulseAnim }] } : {}
+            ]}
+          >
+            <TouchableOpacity 
+              onPress={handleMainButtonPress} 
+              style={[styles.micButton, buttonContent.buttonStyle]}
+              activeOpacity={0.8}
+              disabled={buttonContent.disabled}
+            >
+              <Ionicons name={buttonContent.icon} size={24} color={COLORS.WHITE} />
+            </TouchableOpacity>
+          </Animated.View>
+          
+          <Text style={styles.instructionText}>{buttonContent.text}</Text>
+          
+          {!state.isRecording && !state.isProcessing && (
+            <Text style={styles.hintText}>
+              Maximum duration: 30 seconds • Speak clearly and minimize background noise
+            </Text>
+          )}
+          
+          {state.isRecording && (
+            <Text style={styles.hintText}>Speak clearly for best transcription results</Text>
           )}
         </View>
       </View>
@@ -575,16 +674,31 @@ const styles = StyleSheet.create({
   },
   startButton: {
     backgroundColor: COLORS.SOFT_GREEN,
-    marginBottom: 24,
   },
   stopButton: {
     backgroundColor: COLORS.ERROR_RED,
+  },
+  processingButton: {
+    backgroundColor: COLORS.MEDIUM_OLIVE,
+    opacity: 0.7,
   },
   instructionText: {
     fontSize: 13,
     color: COLORS.MEDIUM_OLIVE,
     fontWeight: '500',
     marginBottom: 8,
+  },
+  retryButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: COLORS.LIGHT_GRAY,
+    borderRadius: 6,
+    marginLeft: 8,
+  },
+  retryText: {
+    fontSize: 11,
+    color: COLORS.MEDIUM_OLIVE,
+    fontWeight: '500',
   },
   hintText: {
     fontSize: 11,

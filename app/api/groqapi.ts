@@ -85,23 +85,6 @@ const safeJsonParse = (jsonString: string) => {
   }
 };
 
-// Helper function to add messages individually
-const addMessage = async (chatId: string, content: string, isUserMessage: boolean, timestamp: string) => {
-  const { error } = await supabase
-    .from('messages')
-    .insert({
-      chat_id: chatId,
-      content: content,
-      is_user_message: isUserMessage,
-      timestamp: timestamp
-    });
-  
-  if (error) {
-    console.error('Error adding message:', error);
-    throw new Error(`Failed to add message: ${error.message}`);
-  }
-};
-
 // Helper function to create a new chat
 const createNewChat = async (userId: string, title: string, emoji: string) => {
   const chatId = uuidv4();
@@ -149,24 +132,6 @@ const updateChatContext = async (chatId: string, context: string, timestamp: str
 // Helper function to get conversation context
 const getConversationContext = async (chatId: string) => {
   try {
-    // Get the last bot message for context continuity
-    const { data: lastBotMessage, error: lastBotError } = await supabase
-      .from('messages')
-      .select('content')
-      .eq('chat_id', chatId)
-      .eq('is_user_message', false)
-      .order('timestamp', { ascending: false })
-      .limit(1)
-      .single();
-
-    // Get recent conversation history (last 6 messages for context)
-    const { data: recentMessages, error: recentError } = await supabase
-      .from('messages')
-      .select('is_user_message, content, timestamp')
-      .eq('chat_id', chatId)
-      .order('timestamp', { ascending: false })
-      .limit(6);
-
     // Get stored context
     const { data: contextData, error: contextError } = await supabase
       .from('chat_contexts')
@@ -174,35 +139,18 @@ const getConversationContext = async (chatId: string) => {
       .eq('chat_id', chatId)
       .single();
 
-    let conversationHistory = '';
-    let lastBotResponse = '';
     let storedContext = '';
-
-    if (!recentError && recentMessages && recentMessages.length > 0) {
-      conversationHistory = recentMessages
-        .reverse() // Show chronological order
-        .map(msg => `${msg.is_user_message ? 'User' : 'Assistant'}: ${msg.content}`)
-        .join('\n');
-    }
-
-    if (!lastBotError && lastBotMessage) {
-      lastBotResponse = lastBotMessage.content;
-    }
 
     if (!contextError && contextData) {
       storedContext = contextData.context;
     }
 
     return {
-      conversationHistory,
-      lastBotResponse,
       storedContext
     };
   } catch (error) {
     console.error('Error getting conversation context:', error);
     return {
-      conversationHistory: '',
-      lastBotResponse: '',
       storedContext: ''
     };
   }
@@ -222,14 +170,10 @@ export const processWithGroq = async (request: GroqRequest): Promise<GroqRespons
     let botResponse = "";
     
     // Get conversation context for existing chats
-    let conversationHistory = '';
-    let lastBotResponse = '';
     let storedContext = '';
     
     if (chatId) {
       const contextData = await getConversationContext(chatId);
-      conversationHistory = contextData.conversationHistory;
-      lastBotResponse = contextData.lastBotResponse;
       storedContext = contextData.storedContext;
       
       // Use stored context if no context provided
@@ -252,7 +196,6 @@ export const processWithGroq = async (request: GroqRequest): Promise<GroqRespons
         updatedEmoji = emoji || '💬';
       }
     } else {
-      // Create a new chat if chatId is not provided
       // Generate a default chat name based on first message
       const defaultChatName = message.length > 30 
         ? `${message.substring(0, 30)}...` 
@@ -268,11 +211,6 @@ export const processWithGroq = async (request: GroqRequest): Promise<GroqRespons
 
 ${chatId ? `CONVERSATION CONTEXT:
 Previous conversation summary: ${updatedContext}
-
-Recent conversation history:
-${conversationHistory}
-
-Your last response was: ${lastBotResponse}
 
 Continue this conversation naturally, referring to previous topics when relevant.` : 'This is the start of a new conversation.'}
 
@@ -496,26 +434,16 @@ Response Guidelines:
       }
     }
     
-    // Handle database operations based on whether this is a new or existing chat
+    // Handle database operations - only update metadata, NO MESSAGE SAVING
     if (!chatId) {
-      // Create new chat first
+      // Create new chat only
       generatedChatId = await createNewChat(userId, updatedChatName, updatedEmoji);
       
-      // Add user message
-      await addMessage(generatedChatId, message, true, timestamp);
-      
-      // Add bot response
-      await addMessage(generatedChatId, botResponse, false, timestamp);
-      
-      // Add context
+      // Add context for new chat
       await updateChatContext(generatedChatId, updatedContext, timestamp);
       
     } else {
-      // Add messages for existing chat
-      await addMessage(chatId, message, true, timestamp);
-      await addMessage(chatId, botResponse, false, timestamp);
-      
-      // Update context
+      // Update context for existing chat
       await updateChatContext(chatId, updatedContext, timestamp);
       
       // Update chat details if they've changed
@@ -550,16 +478,6 @@ Response Guidelines:
     // Provide default values for error case
     const errorEmoji = '⚠️';
     const errorChatId = request.chatId || uuidv4();
-    
-    // If we have a chatId, still try to save the error message
-    if (request.chatId) {
-      try {
-        await addMessage(request.chatId, request.message, true, new Date().toISOString());
-        await addMessage(request.chatId, "Sorry, I encountered an error while processing your message. Please try again.", false, new Date().toISOString());
-      } catch (dbError) {
-        console.error('Failed to save error message:', dbError);
-      }
-    }
     
     return {
       botResponse: "Sorry, I encountered an error while processing your message. Please try again.",
