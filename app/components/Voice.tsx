@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { transcribeVoice, isAudioRecordingSupported } from '../api/getTranscription';
+import { transcribeVoice, isAudioRecordingSupported, VoiceRecordingOptions } from '../api/getTranscription';
 
 const { width, height } = Dimensions.get('window');
 
@@ -41,14 +41,6 @@ interface RecordingState {
   recordingTime: number;
 }
 
-// Define the VoiceRecordingOptions interface based on what the API expects
-interface VoiceRecordingOptions {
-  uri?: string;
-  file?: File;
-  blob?: Blob;
-  // Add other properties as needed based on your API
-}
-
 export default function VoiceRecordingOverlay({ 
   isOpen, 
   onClose, 
@@ -65,9 +57,10 @@ export default function VoiceRecordingOverlay({
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+  
+  // References for manual recording control
+  const isRecordingRef = useRef(false);
+  const recordingStartTimeRef = useRef<number>(0);
 
   // Entrance animation
   useEffect(() => {
@@ -119,8 +112,10 @@ export default function VoiceRecordingOverlay({
   // Timer effect
   useEffect(() => {
     if (state.isRecording) {
+      recordingStartTimeRef.current = Date.now();
       timerRef.current = setInterval(() => {
-        setState(prev => ({ ...prev, recordingTime: prev.recordingTime + 1 }));
+        const elapsed = Math.floor((Date.now() - recordingStartTimeRef.current) / 1000);
+        setState(prev => ({ ...prev, recordingTime: elapsed }));
       }, 1000);
     } else {
       if (timerRef.current) {
@@ -158,22 +153,12 @@ export default function VoiceRecordingOverlay({
   }, [isOpen]);
 
   const cleanupRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.stop();
-    }
+    isRecordingRef.current = false;
     
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-
-    audioChunksRef.current = [];
-    mediaRecorderRef.current = null;
   };
 
   const handleStartRecording = async () => {
@@ -193,111 +178,64 @@ export default function VoiceRecordingOverlay({
         recordingTime: 0
       }));
 
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          sampleRate: 16000,
-          channelCount: 1
-        } 
-      });
+      // Set recording flag
+      isRecordingRef.current = true;
+      recordingStartTimeRef.current = Date.now();
 
-      streamRef.current = stream;
-      audioChunksRef.current = [];
-      
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
-        ? 'audio/webm;codecs=opus' 
-        : 'audio/webm';
-      
-      const mediaRecorder = new MediaRecorder(stream, { 
-        mimeType,
-        audioBitsPerSecond: 128000
-      });
-      
-      mediaRecorderRef.current = mediaRecorder;
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        // Process recording when stopped
-        if (audioChunksRef.current.length > 0) {
-          await processRecording();
-        }
-        
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop());
-          streamRef.current = null;
-        }
-      };
-
-      mediaRecorder.onerror = (event) => {
-        console.error('MediaRecorder error:', event);
-        setState(prev => ({ 
-          ...prev, 
-          error: 'Recording failed. Please try again.',
-          isRecording: false,
-          isProcessing: false
-        }));
-      };
-
-      mediaRecorder.start(100); // Collect data every 100ms
-      
     } catch (error) {
       console.error('Recording start error:', error);
       setState(prev => ({ 
         ...prev, 
-        error: 'Unable to access microphone. Please check permissions.',
+        error: 'Unable to start recording. Please try again.',
         isRecording: false
       }));
+      isRecordingRef.current = false;
     }
   };
 
-  const handleStopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      // Immediately set processing state and stop recording
-      setState(prev => ({ ...prev, isRecording: false, isProcessing: true }));
-      mediaRecorderRef.current.stop();
-      
-      // Clear the timer immediately
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    }
-  };
-
-  const processRecording = async () => {
-    if (audioChunksRef.current.length === 0) {
-      setState(prev => ({ 
-        ...prev, 
-        error: 'No audio data recorded. Please try again.',
-        isProcessing: false
-      }));
+  const handleStopRecording = async () => {
+    if (!isRecordingRef.current || state.isProcessing) {
       return;
     }
 
+    // Immediately update UI state
+    setState(prev => ({ 
+      ...prev, 
+      isRecording: false, 
+      isProcessing: true 
+    }));
+
+    // Stop the recording flag
+    isRecordingRef.current = false;
+
+    // Clear the timer immediately
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    // Process the recording using your API
+    await processRecording();
+  };
+
+  const processRecording = async () => {
     try {
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
-        ? 'audio/webm;codecs=opus' 
-        : 'audio/webm';
+      // Calculate recording duration
+      const recordingDuration = state.recordingTime * 1000; // Convert to milliseconds
       
-      const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-      
-      // Create the options object in the format expected by the API
+      // Create recording options compatible with your API
       const voiceOptions: VoiceRecordingOptions = {
-        blob: audioBlob,
-        file: new File([audioBlob], 'recording.webm', { type: mimeType })
+        maxDuration: Math.min(recordingDuration, 30000), // Max 30 seconds
+        mimeType: 'audio/webm' // Default format
       };
       
+      // Use your API's transcribeVoice function
       const result = await transcribeVoice(voiceOptions);
       
       if (result.success && result.text && result.text.trim()) {
         const transcribedText = result.text.trim();
         
+        // Filter out common false positives
         const filteredText = transcribedText.toLowerCase();
         if (filteredText === 'thank you' || 
             filteredText === 'thanks' || 
@@ -311,8 +249,14 @@ export default function VoiceRecordingOverlay({
           return;
         }
         
-        // Pass transcription and close immediately
+        // Success - pass transcription and close
         onTranscriptionComplete(transcribedText);
+        
+        // Show language info if available
+        if (result.language) {
+          console.log(`Detected language: ${result.language}`);
+        }
+        
         onClose();
         
       } else {
@@ -329,15 +273,17 @@ export default function VoiceRecordingOverlay({
         error: 'Failed to process audio. Please try again.',
         isProcessing: false
       }));
-    } finally {
-      audioChunksRef.current = [];
     }
   };
 
   const handleMainButtonPress = () => {
+    if (state.isProcessing) {
+      return; // Don't allow interaction while processing
+    }
+    
     if (state.isRecording) {
       handleStopRecording();
-    } else if (!state.isProcessing) {
+    } else {
       handleStartRecording();
     }
   };
@@ -354,7 +300,6 @@ export default function VoiceRecordingOverlay({
       recordingTime: 0,
       isProcessing: false
     }));
-    audioChunksRef.current = [];
   };
 
   const formatTime = (seconds: number) => {
@@ -375,7 +320,7 @@ export default function VoiceRecordingOverlay({
     } else if (state.isRecording) {
       return {
         icon: 'stop' as const,
-        text: 'Tap to stop and send',
+        text: 'Tap to stop and transcribe',
         buttonStyle: styles.stopButton,
         showPulse: true,
         disabled: false
@@ -489,7 +434,7 @@ export default function VoiceRecordingOverlay({
           
           {!state.isRecording && !state.isProcessing && (
             <Text style={styles.hintText}>
-              Maximum duration: 30 seconds • Speak clearly and minimize background noise
+              Maximum duration: 30 seconds • Supports Indian languages and English
             </Text>
           )}
           
